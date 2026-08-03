@@ -10,11 +10,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var windowSize = NSSize.zero
 
-    /// 60-75% of a real Dock icon's size, clamped in case tile-size
-    /// detection fails entirely (Tier 3 fallback in DockWalker).
+    /// ~40% of a real Dock icon's size (shrunk down from an earlier, larger
+    /// pass per explicit request), clamped in case tile-size detection fails
+    /// entirely (Tier 3 fallback in DockWalker).
     private static func pixelSize(forMeasuredTileSize tileSize: CGFloat) -> CGFloat {
-        let raw = (tileSize * 0.68) / CGFloat(MascotSprite.cols)
-        return min(6, max(2.5, raw))
+        let raw = (tileSize * 0.4) / CGFloat(MascotSprite.cols)
+        return min(4, max(1.6, raw))
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

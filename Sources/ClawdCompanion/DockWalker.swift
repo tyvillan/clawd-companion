@@ -129,7 +129,11 @@ final class DockWalker {
     /// update -- Combine's removeDuplicates means repeated same-target tool
     /// calls, e.g. several Reads in a row, don't re-trigger a walk).
     private func handleTargetChange(_ target: TargetApp?) {
-        guard let target, let stopX = resolveStop(for: target) else { return }
+        guard let target, let stopX = resolveStop(for: target) else {
+            state.isTargetWalking = false
+            return
+        }
+        state.isTargetWalking = true
         animate(to: stopX, targetDirected: true)
     }
 
@@ -154,7 +158,8 @@ final class DockWalker {
         let startX = position.x
         let distance = targetX - startX
         guard abs(distance) > 1 else {
-            if !targetDirected { scheduleNextMove() }
+            if targetDirected { state.isTargetWalking = false }
+            scheduleNextMove()
             return
         }
         let duration = min(2.5, max(0.6, abs(distance) / 90.0))
@@ -169,6 +174,7 @@ final class DockWalker {
             let stillValid = targetDirected ? (self.state.targetApp != nil) : (self.state.displayState == .walking)
             guard stillValid else {
                 tick.invalidate()
+                if targetDirected { self.state.isTargetWalking = false }
                 self.scheduleNextMove()
                 return
             }
@@ -180,7 +186,8 @@ final class DockWalker {
             self.onFootToggle?()
             if t >= 1.0 {
                 tick.invalidate()
-                if !targetDirected { self.scheduleNextMove() }
+                if targetDirected { self.state.isTargetWalking = false }
+                self.scheduleNextMove()
             }
         }
     }

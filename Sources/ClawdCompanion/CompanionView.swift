@@ -37,6 +37,7 @@ struct CompanionView: View {
             width: CGFloat(MascotSprite.cols) * pixelSize,
             height: CGFloat(MascotSprite.rows) * pixelSize
         )
+        .opacity(state.isHovering ? 0.2 : 1.0)
         .onChange(of: state.mood) { _, newMood in
             let revertDelay: Double
             switch newMood {

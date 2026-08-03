@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var watcher: StateFileWatcher!
     private var dockWalker: DockWalker!
     private var focusWatcher: FocusWatcher!
+    private var hoverWatcher: HoverWatcher!
     private let state = CompanionState()
 
     private var windowSize = NSSize.zero
@@ -49,13 +50,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Dock's own level guarantees Clawd always renders on top of it.
         newPanel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.dockWindow)) + 1)
         newPanel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        newPanel.isMovableByWindowBackground = true
+        // Position is entirely DockWalker-driven -- don't let a stray drag
+        // knock Clawd off the Dock.
+        newPanel.isMovableByWindowBackground = false
+        newPanel.isMovable = false
 
         let hosting = NSHostingView(rootView: CompanionView(state: state, pixelSize: pixelSize))
         hosting.frame = NSRect(origin: .zero, size: windowSize)
         newPanel.contentView = hosting
         newPanel.orderFrontRegardless()
         panel = newPanel
+        hoverWatcher = HoverWatcher(state: state, panel: newPanel)
 
         walker.onPositionChange = { [weak self] point in
             self?.moveWindow(to: point)

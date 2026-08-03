@@ -34,6 +34,11 @@ final class CompanionState: ObservableObject {
     @Published var footToggle: Bool = false
     /// True once idle has run long enough to nap instead of wander.
     @Published private(set) var isDrowsy: Bool = false
+    /// Set by AppDelegate's mouse-position poll (see HoverWatcher) -- SwiftUI's
+    /// own .onHover relies on a tracking area that only activates while our
+    /// app is the active/frontmost app, which an LSUIElement accessory app
+    /// never is, so it silently never fires here.
+    @Published var isHovering: Bool = false
 
     private static let drowsyThreshold: TimeInterval = 45
     private var idleSince: Date? = Date()

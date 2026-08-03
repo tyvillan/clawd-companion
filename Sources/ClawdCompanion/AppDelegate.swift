@@ -41,7 +41,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         newPanel.isOpaque = false
         newPanel.backgroundColor = .clear
         newPanel.hasShadow = false
-        newPanel.level = .floating
+        // The real Dock draws at a window level above .floating -- with a
+        // lower level, whenever the companion's rect overlaps the Dock's
+        // own bar (even slightly, from a calibration nudge), the Dock
+        // painted over roughly half the sprite. Sitting one level above the
+        // Dock's own level guarantees Clawd always renders on top of it.
+        newPanel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.dockWindow)) + 1)
         newPanel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         newPanel.isMovableByWindowBackground = true
 

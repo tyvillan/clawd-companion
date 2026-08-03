@@ -14,19 +14,36 @@ mkdir -p "$APP_DIR/Contents/MacOS"
 cp .build/release/ClawdCompanion "$APP_DIR/Contents/MacOS/ClawdCompanion"
 cp Info.plist "$APP_DIR/Contents/Info.plist"
 
-# Sign with a real local identity, not ad-hoc (-s -). An ad-hoc signature's
-# identifier is derived from the binary's content hash, which changes every
-# rebuild, so TCC (Accessibility permission) can't recognize it as "the same
-# app" build-to-build. Signing with a stable certificate keeps the identity
-# consistent across rebuilds as long as CFBundleIdentifier + the cert don't
-# change, so the Accessibility grant should persist.
+# This project lives on iCloud Drive: Finder/Spotlight sometimes re-stamps
+# AppleDouble/resource-fork extended attributes on freshly-created files
+# within moments of the cp above (a real race, not just a one-time cleanup),
+# and codesign refuses to sign a bundle containing those ("resource fork,
+# Finder information, or similar detritus not allowed"). Retry the
+# strip+sign a few times to absorb that race rather than failing on it.
 SIGNING_IDENTITY="$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ {print $2; exit}')"
-if [ -n "$SIGNING_IDENTITY" ]; then
-  codesign --force --options runtime -s "$SIGNING_IDENTITY" "$APP_DIR"
-  echo "Signed with: $SIGNING_IDENTITY"
-else
-  echo "No local signing identity found -- signing ad-hoc (Accessibility grant may not survive the next rebuild)"
-  codesign --force -s - "$APP_DIR"
+SIGN_OK=0
+for attempt in 1 2 3 4 5; do
+  xattr -cr "$APP_DIR"
+  if [ -n "$SIGNING_IDENTITY" ]; then
+    if codesign --force --options runtime -s "$SIGNING_IDENTITY" "$APP_DIR" 2>/tmp/clawd-codesign-err; then
+      echo "Signed with: $SIGNING_IDENTITY (attempt $attempt)"
+      SIGN_OK=1
+      break
+    fi
+  else
+    if codesign --force -s - "$APP_DIR" 2>/tmp/clawd-codesign-err; then
+      echo "No local signing identity found -- signed ad-hoc (Accessibility grant may not survive the next rebuild)"
+      SIGN_OK=1
+      break
+    fi
+  fi
+  sleep 0.3
+done
+if [ "$SIGN_OK" -ne 1 ]; then
+  cat /tmp/clawd-codesign-err >&2
+  echo "codesign failed after retries" >&2
+  exit 1
 fi
+rm -f /tmp/clawd-codesign-err
 
 echo "Built: $APP_DIR"

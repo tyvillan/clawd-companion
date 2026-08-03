@@ -43,6 +43,14 @@ final class DockWalker {
                 self?.handleTargetChange(target)
             }
             .store(in: &cancellables)
+
+        state.$isVSCodeFocused
+            .removeDuplicates()
+            .dropFirst() // ignore the initial seed value at launch
+            .sink { [weak self] focused in
+                if focused { self?.handleRefocus() }
+            }
+            .store(in: &cancellables)
     }
 
     func requestAccessibilityIfNeeded() {
@@ -115,14 +123,16 @@ final class DockWalker {
     }
 
     private func attemptMove() {
-        // A named target always takes priority; idle wandering only runs
-        // once nothing in particular is going on.
-        guard state.targetApp == nil, state.displayState == .walking, !stops.isEmpty else {
+        // A named target or a homeward walk always takes priority; idle
+        // wandering only runs once nothing in particular is going on.
+        guard state.targetApp == nil, !state.isHeadingHome,
+              state.displayState == .walking, !stops.isEmpty
+        else {
             scheduleNextMove()
             return
         }
         let target = stops.randomElement() ?? position.x
-        animate(to: target, targetDirected: false)
+        animate(to: target, isStillValid: { [weak state] in state?.displayState == .walking }, onFinish: {})
     }
 
     /// Called whenever CompanionState.targetApp changes (not on every mood
@@ -134,7 +144,28 @@ final class DockWalker {
             return
         }
         state.isTargetWalking = true
-        animate(to: stopX, targetDirected: true)
+        animate(
+            to: stopX,
+            isStillValid: { [weak state] in state?.targetApp != nil },
+            onFinish: { [weak state] in state?.isTargetWalking = false }
+        )
+    }
+
+    /// Called on every VS Code focus *transition into* focused (not on every
+    /// focus update -- dropFirst+removeDuplicates upstream). Walking home
+    /// only makes sense if nothing activity-driven is already in charge of
+    /// where Clawd's headed.
+    private func handleRefocus() {
+        guard state.targetApp == nil, let homeX = resolveHome() else { return }
+        state.isHeadingHome = true
+        animate(
+            to: homeX,
+            isStillValid: { [weak state] in state?.isVSCodeFocused == true },
+            onFinish: { [weak state] in
+                state?.isHeadingHome = false
+                state?.markHomeArrival()
+            }
+        )
     }
 
     private func resolveStop(for target: TargetApp) -> CGFloat? {
@@ -154,11 +185,28 @@ final class DockWalker {
         }
     }
 
-    private func animate(to targetX: CGFloat, targetDirected: Bool) {
+    private static let vsCodeTitles = ["Visual Studio Code", "Code", "Visual Studio Code - Insiders", "VSCodium"]
+
+    private func resolveHome() -> CGFloat? {
+        for title in Self.vsCodeTitles {
+            if let icon = iconsByTitle[title] { return icon.centerX }
+        }
+        return nil
+    }
+
+    /// Animates the window toward targetX. `isStillValid` is checked every
+    /// tick (and once up front for the zero-distance case) so each caller
+    /// can define its own abort condition -- idle wander aborts if walking
+    /// stops being appropriate at all; an activity/home walk only aborts if
+    /// its own reason for existing (a target, or focus) goes away, since
+    /// those are meant to play out alongside whatever mood animation is
+    /// active. `onFinish` runs once, whether the walk completes or aborts,
+    /// for the caller to clear its own in-flight flag.
+    private func animate(to targetX: CGFloat, isStillValid: @escaping () -> Bool, onFinish: @escaping () -> Void) {
         let startX = position.x
         let distance = targetX - startX
         guard abs(distance) > 1 else {
-            if targetDirected { state.isTargetWalking = false }
+            onFinish()
             scheduleNextMove()
             return
         }
@@ -167,14 +215,9 @@ final class DockWalker {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] tick in
             guard let self else { tick.invalidate(); return }
-            // Idle-wander steps abort if walking stops being appropriate
-            // (e.g. focus/mood changed mid-stride); target-directed steps
-            // only abort if the target itself was cleared, since they're
-            // meant to play out alongside whatever mood animation is active.
-            let stillValid = targetDirected ? (self.state.targetApp != nil) : (self.state.displayState == .walking)
-            guard stillValid else {
+            guard isStillValid() else {
                 tick.invalidate()
-                if targetDirected { self.state.isTargetWalking = false }
+                onFinish()
                 self.scheduleNextMove()
                 return
             }
@@ -186,7 +229,7 @@ final class DockWalker {
             self.onFootToggle?()
             if t >= 1.0 {
                 tick.invalidate()
-                if targetDirected { self.state.isTargetWalking = false }
+                onFinish()
                 self.scheduleNextMove()
             }
         }

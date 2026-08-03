@@ -7,10 +7,38 @@ struct CompanionView: View {
     /// actual Dock/display instead of a fixed constant.
     let pixelSize: CGFloat
 
+    private static func spriteSize(pixelSize: CGFloat) -> CGSize {
+        CGSize(width: CGFloat(MascotSprite.cols) * pixelSize, height: CGFloat(MascotSprite.rows) * pixelSize)
+    }
+
+    /// How far a jump/celebrate hop lifts the sprite, scaled to its own
+    /// height rather than a fixed point value -- a flat offset that worked
+    /// at one size clips badly once the sprite shrinks (exactly what
+    /// happened here: a fixed -10pt hop against a ~14pt-tall sprite in a
+    /// window sized to fit the sprite exactly).
+    private static func bounceAmplitude(pixelSize: CGFloat) -> CGFloat {
+        spriteSize(pixelSize: pixelSize).height * 0.9
+    }
+
+    /// The window/hosting-view size AppDelegate should actually allocate,
+    /// padded above the sprite so a full-amplitude hop still has somewhere
+    /// to render -- AppKit windows clip hard to their own frame, so this
+    /// has to be reflected in the real window size, not just the view's
+    /// internal layout. Single source of truth for both.
+    static func windowSize(pixelSize: CGFloat) -> CGSize {
+        let sprite = spriteSize(pixelSize: pixelSize)
+        return CGSize(width: sprite.width, height: sprite.height + bounceAmplitude(pixelSize: pixelSize) * 1.15)
+    }
+
+    private var spriteSize: CGSize { Self.spriteSize(pixelSize: pixelSize) }
+    private var bounceAmplitude: CGFloat { Self.bounceAmplitude(pixelSize: pixelSize) }
+    private var totalSize: CGSize { Self.windowSize(pixelSize: pixelSize) }
+
     private var tickInterval: Double {
-        // A named-target walk always paces the legs regardless of which
-        // mood is animating in place -- it reads as "hustling over there."
-        if state.isTargetWalking { return 0.12 }
+        // A named-target walk, or walking home after a VS Code refocus,
+        // always paces the legs regardless of which mood is animating in
+        // place -- it reads as "hustling over there."
+        if state.isTargetWalking || state.isHeadingHome { return 0.12 }
         switch state.displayState {
         case .active(.typing), .active(.working): return 0.15
         case .active(.thinking): return 0.5
@@ -33,10 +61,12 @@ struct CompanionView: View {
                 .rotationEffect(.degrees(leanDegrees(toggle: toggle)))
                 .scaleEffect(pulseScale(toggle: toggle))
         }
-        .frame(
-            width: CGFloat(MascotSprite.cols) * pixelSize,
-            height: CGFloat(MascotSprite.rows) * pixelSize
-        )
+        .frame(width: spriteSize.width, height: spriteSize.height)
+        // Expands the layout to the padded total size, keeping the
+        // (unshifted-frame) sprite anchored to the bottom -- a bounce/jump
+        // offset then moves the rendered pixels up into the headroom above
+        // instead of past the window's own hard edge.
+        .frame(width: totalSize.width, height: totalSize.height, alignment: .bottom)
         .opacity(state.isHovering ? 0.2 : 1.0)
         .onChange(of: state.mood) { _, newMood in
             let revertDelay: Double
@@ -95,9 +125,10 @@ struct CompanionView: View {
     }
 
     private func footOffset(toggle: Bool) -> Int {
-        switch state.displayState {
-        case .walking:
+        if state.isHeadingHome || state.displayState == .walking {
             return state.footToggle ? 1 : -1
+        }
+        switch state.displayState {
         case .active(.typing), .active(.working):
             return toggle ? 1 : -1
         default:
@@ -106,6 +137,12 @@ struct CompanionView: View {
     }
 
     private func eyeStyle(tick: Int, toggle: Bool) -> MascotSprite.EyeStyle {
+        // Alert (occasionally blinking) while actually in transit, even if
+        // the underlying mood/displayState would otherwise say "asleep" --
+        // e.g. walking home already-drowsy after a long unfocused stretch.
+        if state.isTargetWalking || state.isHeadingHome {
+            return tick % 9 == 0 ? .closed : .open
+        }
         switch state.displayState {
         case .sleeping:
             return .closed
@@ -122,7 +159,7 @@ struct CompanionView: View {
     private func bounceOffset(toggle: Bool) -> CGFloat {
         switch state.displayState {
         case .active(.celebrating), .jumping:
-            return toggle ? -10 : 0
+            return toggle ? -bounceAmplitude : 0
         case .sleeping:
             return toggle ? -1.5 : 0
         default:

@@ -29,6 +29,10 @@ final class CompanionState: ObservableObject {
     /// target (not idle wander) -- CompanionView uses this to pick up the
     /// pace regardless of which mood is currently animating in place.
     @Published var isTargetWalking: Bool = false
+    /// True only while DockWalker is walking home to the VS Code icon after
+    /// a refocus -- distinct from isTargetWalking since it isn't tied to
+    /// TargetApp/tool activity at all.
+    @Published var isHeadingHome: Bool = false
     /// Flipped by DockWalker on every movement tick while walking, purely to
     /// drive the walk-cycle foot animation in CompanionView.
     @Published var footToggle: Bool = false
@@ -39,6 +43,9 @@ final class CompanionState: ObservableObject {
     /// app is the active/frontmost app, which an LSUIElement accessory app
     /// never is, so it silently never fires here.
     @Published var isHovering: Bool = false
+    /// True whenever any app (other than us) is in real macOS fullscreen --
+    /// see FullScreenWatcher. AppDelegate uses this to hide the whole window.
+    @Published var isAnyAppFullScreen: Bool = false
 
     private static let drowsyThreshold: TimeInterval = 45
     private var idleSince: Date? = Date()
@@ -55,6 +62,15 @@ final class CompanionState: ObservableObject {
     private func evaluateDrowsy() {
         guard mood == .idle, let since = idleSince else { return }
         isDrowsy = Date().timeIntervalSince(since) > Self.drowsyThreshold
+    }
+
+    /// Called once DockWalker's home-walk (triggered by a VS Code refocus)
+    /// arrives. Backdates idleSince rather than setting isDrowsy directly, so
+    /// the ordinary timer-driven evaluation keeps agreeing with it on every
+    /// subsequent tick instead of the two fighting each other.
+    func markHomeArrival() {
+        idleSince = Date().addingTimeInterval(-Self.drowsyThreshold - 1)
+        evaluateDrowsy()
     }
 
     /// What should actually be displayed/animated right now. Walking only

@@ -24,19 +24,30 @@ struct CompanionView: View {
     /// out -- kept alongside bounceAmplitude since both compete for the same
     /// headroom below.
     private static func sleepZRise(pixelSize: CGFloat) -> CGFloat {
-        spriteSize(pixelSize: pixelSize).height * 1.3
+        spriteSize(pixelSize: pixelSize).height * 1.1
     }
+
+    /// Fixed (not pixelSize-scaled) starting nudge for the sleep Z overlay --
+    /// a pixelSize-scaled nudge shrinks to almost nothing at the small end of
+    /// the clamp range, which is exactly the case that clipped: this and the
+    /// Z's own upward travel both have to fit inside the window's headroom,
+    /// which is sized in absolute points, not pixelSize units.
+    private static let sleepZStartOffset: CGFloat = 8
 
     /// The window/hosting-view size AppDelegate should actually allocate,
     /// padded above the sprite so a full-amplitude hop -- or a fully-risen
     /// sleep Z -- still has somewhere to render. AppKit windows clip hard to
     /// their own frame, so whichever animation needs more headroom has to be
     /// reflected in the real window size, not just the view's internal
-    /// layout. Single source of truth for both.
+    /// layout. Single source of truth for both. The sleep side adds a
+    /// generous flat safety margin on top of the Z's own travel + start
+    /// offset -- a tighter margin here previously still clipped the glyph
+    /// (confirmed by live screenshot testing), since Text's reported frame
+    /// includes font leading/metrics beyond just the visible glyph ink.
     static func windowSize(pixelSize: CGFloat) -> CGSize {
         let sprite = spriteSize(pixelSize: pixelSize)
         let jumpHeadroom = bounceAmplitude(pixelSize: pixelSize) * 1.15
-        let sleepHeadroom = sleepZRise(pixelSize: pixelSize) + 14
+        let sleepHeadroom = sleepZRise(pixelSize: pixelSize) + sleepZStartOffset + 40
         return CGSize(width: sprite.width, height: sprite.height + max(jumpHeadroom, sleepHeadroom))
     }
 
@@ -147,7 +158,13 @@ struct CompanionView: View {
         let phase = ((t / Self.sleepZCycle) + Double(index) / Double(Self.sleepZCount))
             .truncatingRemainder(dividingBy: 1)
         let dy = -CGFloat(phase) * Self.sleepZRise(pixelSize: pixelSize)
-        let dx = CGFloat(phase) * pixelSize * 3
+        // A fixed per-index lane (not just phase-driven drift) keeps the 3
+        // staggered Z's from rising along nearly the same path -- with only
+        // drift-based spacing they overlapped into an illegible tangle
+        // (confirmed by live screenshot testing), since each one stays
+        // visible for most of the whole cycle, not just its own third.
+        let lane = CGFloat(index) * 10
+        let dx = lane + CGFloat(phase) * 10
         let fadeIn = 0.15
         let opacity = phase < fadeIn ? phase / fadeIn : 1 - (phase - fadeIn) / (1 - fadeIn)
         return (dy, dx, max(0, opacity))
@@ -158,14 +175,18 @@ struct CompanionView: View {
             ForEach(0..<Self.sleepZCount, id: \.self) { index in
                 let p = sleepZPhase(date: date, index: index)
                 Text("Z")
-                    .font(.system(size: max(9, pixelSize * 3), weight: .bold, design: .rounded))
+                    // A 9pt floor rendered as a fuzzy, illegible dot rather
+                    // than a readable letter once opacity/antialiasing were
+                    // applied (confirmed by live screenshot testing) -- this
+                    // needs to read clearly as "Z", not just be present.
+                    .font(.system(size: max(15, pixelSize * 4), weight: .bold, design: .rounded))
                     .foregroundStyle(MascotSprite.bodyColor)
                     .opacity(p.opacity)
                     .offset(x: p.dx, y: p.dy)
             }
         }
         .frame(width: spriteSize.width, height: spriteSize.height, alignment: .topTrailing)
-        .offset(x: pixelSize * 1.5, y: -pixelSize * 2)
+        .offset(x: 4, y: -Self.sleepZStartOffset)
     }
 
     private func drawEye(_ gc: GraphicsContext, in rect: CGRect, style: MascotSprite.EyeStyle) {

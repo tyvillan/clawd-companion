@@ -163,15 +163,26 @@ struct CompanionView: View {
         // drift-based spacing they overlapped into an illegible tangle
         // (confirmed by live screenshot testing), since each one stays
         // visible for most of the whole cycle, not just its own third.
-        let lane = CGFloat(index) * 10
-        let dx = lane + CGFloat(phase) * 10
+        // Centered on 0 (not all-positive): the overlay anchors to the
+        // sprite's top-trailing corner with zero margin to its right, so an
+        // all-rightward lane drove every Z straight off the window's own
+        // right edge -- a real, confirmed regression, not just a subtler
+        // version of the overlap problem.
+        let lane = (CGFloat(index) - CGFloat(Self.sleepZCount - 1) / 2) * 9
+        let dx = lane + CGFloat(phase) * 4
         let fadeIn = 0.15
         let opacity = phase < fadeIn ? phase / fadeIn : 1 - (phase - fadeIn) / (1 - fadeIn)
         return (dy, dx, max(0, opacity))
     }
 
     private func sleepZOverlay(date: Date) -> some View {
-        ZStack(alignment: .topTrailing) {
+        // Centered (.top), not .topTrailing: the trailing edge sits exactly
+        // at the window's own right edge with zero horizontal margin, so any
+        // rightward lane/drift went straight off the window and got clipped
+        // to a bare vertical sliver -- confirmed by a live screenshot report.
+        // Centering gives each lane room on both sides within the sprite's
+        // own width, which is comfortably wider than a Z glyph plus jitter.
+        ZStack(alignment: .top) {
             ForEach(0..<Self.sleepZCount, id: \.self) { index in
                 let p = sleepZPhase(date: date, index: index)
                 Text("Z")
@@ -185,8 +196,8 @@ struct CompanionView: View {
                     .offset(x: p.dx, y: p.dy)
             }
         }
-        .frame(width: spriteSize.width, height: spriteSize.height, alignment: .topTrailing)
-        .offset(x: 4, y: -Self.sleepZStartOffset)
+        .frame(width: spriteSize.width, height: spriteSize.height, alignment: .top)
+        .offset(y: -Self.sleepZStartOffset)
     }
 
     private func drawEye(_ gc: GraphicsContext, in rect: CGRect, style: MascotSprite.EyeStyle) {

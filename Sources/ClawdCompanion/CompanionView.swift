@@ -20,14 +20,24 @@ struct CompanionView: View {
         spriteSize(pixelSize: pixelSize).height * 0.9
     }
 
+    /// How far the floating sleep Z's rise above the sprite before fading
+    /// out -- kept alongside bounceAmplitude since both compete for the same
+    /// headroom below.
+    private static func sleepZRise(pixelSize: CGFloat) -> CGFloat {
+        spriteSize(pixelSize: pixelSize).height * 1.3
+    }
+
     /// The window/hosting-view size AppDelegate should actually allocate,
-    /// padded above the sprite so a full-amplitude hop still has somewhere
-    /// to render -- AppKit windows clip hard to their own frame, so this
-    /// has to be reflected in the real window size, not just the view's
-    /// internal layout. Single source of truth for both.
+    /// padded above the sprite so a full-amplitude hop -- or a fully-risen
+    /// sleep Z -- still has somewhere to render. AppKit windows clip hard to
+    /// their own frame, so whichever animation needs more headroom has to be
+    /// reflected in the real window size, not just the view's internal
+    /// layout. Single source of truth for both.
     static func windowSize(pixelSize: CGFloat) -> CGSize {
         let sprite = spriteSize(pixelSize: pixelSize)
-        return CGSize(width: sprite.width, height: sprite.height + bounceAmplitude(pixelSize: pixelSize) * 1.15)
+        let jumpHeadroom = bounceAmplitude(pixelSize: pixelSize) * 1.15
+        let sleepHeadroom = sleepZRise(pixelSize: pixelSize) + 14
+        return CGSize(width: sprite.width, height: sprite.height + max(jumpHeadroom, sleepHeadroom))
     }
 
     private var spriteSize: CGSize { Self.spriteSize(pixelSize: pixelSize) }
@@ -46,7 +56,11 @@ struct CompanionView: View {
         case .active(.celebrating): return 0.15
         case .active(.waving): return 0.3
         case .jumping: return 0.35
-        case .sleeping: return 1.2
+        // Faster than the other in-place moods despite sleeping being the
+        // "calmest" one -- the floating Z's and breathing motion need a
+        // smooth-ish cadence, not the coarse 1.2s toggle rate that was fine
+        // back when sleeping had no continuous motion to animate.
+        case .sleeping: return 0.1
         default: return 0.6
         }
     }
@@ -56,10 +70,16 @@ struct CompanionView: View {
             let tick = Int(context.date.timeIntervalSinceReferenceDate / tickInterval)
             let toggle = tick % 2 == 0
 
-            spriteCanvas(footOffset: footOffset(toggle: toggle), eyeStyle: eyeStyle(tick: tick, toggle: toggle))
-                .offset(y: bounceOffset(toggle: toggle))
-                .rotationEffect(.degrees(leanDegrees(toggle: toggle)))
-                .scaleEffect(pulseScale(toggle: toggle))
+            ZStack {
+                spriteCanvas(footOffset: footOffset(toggle: toggle), eyeStyle: eyeStyle(tick: tick, toggle: toggle))
+                    .offset(y: bounceOffset(toggle: toggle, date: context.date))
+                    .rotationEffect(.degrees(leanDegrees(toggle: toggle)))
+                    .scaleEffect(pulseScale(toggle: toggle))
+
+                if state.displayState == .sleeping {
+                    sleepZOverlay(date: context.date)
+                }
+            }
         }
         .frame(width: spriteSize.width, height: spriteSize.height)
         // Expands the layout to the padded total size, keeping the
@@ -84,6 +104,13 @@ struct CompanionView: View {
     private func spriteCanvas(footOffset: Int, eyeStyle: MascotSprite.EyeStyle) -> some View {
         Canvas { gc, _ in
             let grid = MascotSprite.grid(footOffset: footOffset)
+            // Body cells are accumulated into one Path and filled in a
+            // single call rather than per-cell: filling each cell's rect
+            // separately gives every one its own antialiasing pass, which
+            // shows up as faint hairline seams between adjacent same-color
+            // cells (visible as "pixel outlines"). One fill over the
+            // unioned region has no internal edges to antialias.
+            var bodyPath = Path()
             for y in 0..<MascotSprite.rows {
                 for x in 0..<MascotSprite.cols {
                     let rect = CGRect(
@@ -94,13 +121,51 @@ struct CompanionView: View {
                     case .empty:
                         continue
                     case .body:
-                        gc.fill(Path(rect), with: .color(MascotSprite.bodyColor))
+                        bodyPath.addRect(rect)
                     case .eye:
                         drawEye(gc, in: rect, style: eyeStyle)
                     }
                 }
             }
+            gc.fill(bodyPath, with: .color(MascotSprite.bodyColor))
         }
+    }
+
+    private static let sleepZCount = 3
+    private static let sleepZCycle: Double = 2.4
+
+    /// Position/opacity for one of the floating "Z"s in the sleep overlay,
+    /// staggered by index so they rise on a continuous loop rather than all
+    /// popping at once. Driven by wall-clock time (not the coarse
+    /// tick/toggle used elsewhere) so the float reads as smooth motion.
+    /// Deliberately no scale-up-while-rising flourish: a small scale factor
+    /// stacked with the fade made the glyph fade into near-invisibility for
+    /// most of the cycle (confirmed by live screenshot testing) -- a
+    /// fixed-size glyph that just rises and fades reads far more reliably.
+    private func sleepZPhase(date: Date, index: Int) -> (dy: CGFloat, dx: CGFloat, opacity: Double) {
+        let t = date.timeIntervalSinceReferenceDate
+        let phase = ((t / Self.sleepZCycle) + Double(index) / Double(Self.sleepZCount))
+            .truncatingRemainder(dividingBy: 1)
+        let dy = -CGFloat(phase) * Self.sleepZRise(pixelSize: pixelSize)
+        let dx = CGFloat(phase) * pixelSize * 3
+        let fadeIn = 0.15
+        let opacity = phase < fadeIn ? phase / fadeIn : 1 - (phase - fadeIn) / (1 - fadeIn)
+        return (dy, dx, max(0, opacity))
+    }
+
+    private func sleepZOverlay(date: Date) -> some View {
+        ZStack(alignment: .topTrailing) {
+            ForEach(0..<Self.sleepZCount, id: \.self) { index in
+                let p = sleepZPhase(date: date, index: index)
+                Text("Z")
+                    .font(.system(size: max(9, pixelSize * 3), weight: .bold, design: .rounded))
+                    .foregroundStyle(MascotSprite.bodyColor)
+                    .opacity(p.opacity)
+                    .offset(x: p.dx, y: p.dy)
+            }
+        }
+        .frame(width: spriteSize.width, height: spriteSize.height, alignment: .topTrailing)
+        .offset(x: pixelSize * 1.5, y: -pixelSize * 2)
     }
 
     private func drawEye(_ gc: GraphicsContext, in rect: CGRect, style: MascotSprite.EyeStyle) {
@@ -161,12 +226,17 @@ struct CompanionView: View {
         }
     }
 
-    private func bounceOffset(toggle: Bool) -> CGFloat {
+    private func bounceOffset(toggle: Bool, date: Date) -> CGFloat {
         switch state.displayState {
         case .active(.celebrating), .jumping:
             return toggle ? -bounceAmplitude : 0
         case .sleeping:
-            return toggle ? -1.5 : 0
+            // A continuous sine wave rather than the toggle used elsewhere --
+            // sleeping now ticks at 0.1s (to animate the floating Z's
+            // smoothly), and a binary toggle at that rate would flicker
+            // instead of read as a gentle breathing motion.
+            let t = date.timeIntervalSinceReferenceDate
+            return CGFloat(sin(t * .pi / 1.4)) * 1.5
         default:
             return 0
         }

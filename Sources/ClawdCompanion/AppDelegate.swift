@@ -18,12 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// own manual alpha/position control.
     private var isPeeking = false
 
-    /// ~40% of a real Dock icon's size (shrunk down from an earlier, larger
-    /// pass per explicit request), clamped in case tile-size detection fails
-    /// entirely (Tier 3 fallback in DockWalker).
+    /// ~50% of a real Dock icon's size (nudged up from 40% per request --
+    /// still comfortably smaller than the icons themselves), clamped in case
+    /// tile-size detection fails entirely (Tier 3 fallback in DockWalker).
     private static func pixelSize(forMeasuredTileSize tileSize: CGFloat) -> CGFloat {
-        let raw = (tileSize * 0.4) / CGFloat(MascotSprite.cols)
-        return min(4, max(1.6, raw))
+        let raw = (tileSize * 0.5) / CGFloat(MascotSprite.cols)
+        return min(5, max(2, raw))
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

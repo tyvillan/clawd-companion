@@ -108,6 +108,11 @@ struct CompanionView: View {
         case .open:
             gc.fill(Path(rect), with: .color(MascotSprite.eyeColor))
         case .closed:
+            // Paint the rest of the cell as body color first -- otherwise
+            // the thin eyelid bar leaves the cell's top/bottom untouched
+            // (transparent), which reads as a faint gap rather than a
+            // visibly shut eye.
+            gc.fill(Path(rect), with: .color(MascotSprite.bodyColor))
             let bar = CGRect(
                 x: rect.minX, y: rect.midY - rect.height * 0.12,
                 width: rect.width, height: rect.height * 0.24

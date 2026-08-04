@@ -33,6 +33,12 @@ final class CompanionState: ObservableObject {
     /// a refocus -- distinct from isTargetWalking since it isn't tied to
     /// TargetApp/tool activity at all.
     @Published var isHeadingHome: Bool = false
+    /// True only while DockWalker is mid-stride on an idle wander (not a
+    /// named target or home walk). isDrowsy is purely time-based and can
+    /// flip true mid-stride -- this keeps displayState reporting .walking
+    /// until he actually arrives, so he doesn't start playing the sleep
+    /// animation while still sliding across the Dock.
+    @Published var isWandering: Bool = false
     /// Flipped by DockWalker on every movement tick while walking, purely to
     /// drive the walk-cycle foot animation in CompanionView.
     @Published var footToggle: Bool = false
@@ -83,6 +89,13 @@ final class CompanionState: ObservableObject {
     var displayState: DisplayState {
         guard mood == .idle else { return .active(mood) }
         if !isVSCodeFocused { return .jumping }
+        // Any of the three ways he can be mid-transit (idle wander, walking
+        // home after a refocus, walking to a named target) has to keep
+        // reporting .walking regardless of isDrowsy -- otherwise the sleep
+        // animation (closed eyes, floating Z's, breathing bob) can start
+        // while he's still visibly sliding across the Dock toward wherever
+        // he was headed.
+        if isWandering || isHeadingHome || isTargetWalking { return .walking }
         return isDrowsy ? .sleeping : .walking
     }
 

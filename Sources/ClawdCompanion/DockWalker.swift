@@ -132,7 +132,12 @@ final class DockWalker {
             return
         }
         let target = stops.randomElement() ?? position.x
-        animate(to: target, isStillValid: { [weak state] in state?.displayState == .walking }, onFinish: {})
+        state.isWandering = true
+        animate(
+            to: target,
+            isStillValid: { [weak state] in state?.displayState == .walking },
+            onFinish: { [weak state] in state?.isWandering = false }
+        )
     }
 
     /// Called whenever CompanionState.targetApp changes (not on every mood
@@ -140,14 +145,29 @@ final class DockWalker {
     /// calls, e.g. several Reads in a row, don't re-trigger a walk).
     private func handleTargetChange(_ target: TargetApp?) {
         guard let target, let stopX = resolveStop(for: target) else {
+            // Also covers an unresolvable target (e.g. Terminal isn't
+            // currently open) -- same staleness problem as below applies:
+            // leaving it set would block idle wander indefinitely on an
+            // icon that was never actually reachable.
             state.isTargetWalking = false
+            state.targetApp = nil
             return
         }
         state.isTargetWalking = true
         animate(
             to: stopX,
             isStillValid: { [weak state] in state?.targetApp != nil },
-            onFinish: { [weak state] in state?.isTargetWalking = false }
+            onFinish: { [weak state] in
+                state?.isTargetWalking = false
+                // Release the target once arrived -- otherwise targetApp
+                // stays set indefinitely (nothing else clears it between
+                // tool calls of the same kind, and removeDuplicates means a
+                // later identical write is a no-op), permanently blocking
+                // attemptMove()'s `targetApp == nil` guard and leaving him
+                // stuck at the last target icon instead of resuming idle
+                // wander -- and eventually sleep -- once things go quiet.
+                state?.targetApp = nil
+            }
         )
     }
 

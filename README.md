@@ -115,7 +115,9 @@ Hovering the mouse over him fades him to 20% opacity so he never blocks somethin
 
 ## Settings
 
-Clawd puts a small mascot glyph in the menu bar; click it for **Settings…** or **Quit**. You can also **right-click Clawd himself** to get the same menu, and `open -a ClawdCompanion --args --settings` opens Settings directly — both exist because a full menu bar (or a notched display) can leave a new status item with nowhere to draw.
+Clawd puts a small mascot glyph in the menu bar; click it for **Settings…** or **Quit**. You can also **right-click Clawd himself** to get the same menu, and `open -a ClawdCompanion --args --settings` opens Settings directly.
+
+> **Not seeing the glyph?** A menu bar manager (Hidden Bar, Bartender, Ice) files new items into its hidden section, parking them far off-screen — the item exists, it's just not on screen. Expand the manager and ⌘-drag the glyph into the visible area; the position sticks after that. The right-click and `--settings` routes work either way.
 
 | Setting | What it does |
 | --- | --- |

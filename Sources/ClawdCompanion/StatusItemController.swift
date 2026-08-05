@@ -23,6 +23,12 @@ final class StatusItemController {
         item.button?.image = Self.menuBarGlyph()
         item.button?.toolTip = "Clawd Companion"
         item.menu = buildMenu()
+        // Persists the slot the user drags it to, across relaunches and
+        // rebuilds. Without this, a menu bar manager (Hidden Bar, Bartender,
+        // Ice) re-files it into the hidden section every launch, where it's
+        // parked far off-screen at a large negative X and looks like it was
+        // never created at all.
+        item.autosaveName = "ClawdCompanionStatusItem"
         statusItem = item
     }
 
@@ -77,9 +83,10 @@ final class StatusItemController {
     private static func menuBarGlyph() -> NSImage {
         let cols = CGFloat(MascotSprite.cols)
         let rows = CGFloat(MascotSprite.rows)
-        // Menu bar icons should be ~16pt tall at most; width follows the
-        // grid's own (very wide) aspect ratio.
-        let pixel: CGFloat = 1.4
+        // Menu bar icons top out around 18pt tall; the grid is only 7 rows,
+        // so this lands at 14pt tall and 26pt wide -- legible without
+        // crowding the bar. (1.4 was tried first and read as a smudge.)
+        let pixel: CGFloat = 2.0
         let size = NSSize(width: cols * pixel, height: rows * pixel)
 
         let image = NSImage(size: size, flipped: false) { _ in

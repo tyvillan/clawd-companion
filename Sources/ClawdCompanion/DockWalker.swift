@@ -15,6 +15,7 @@ import Combine
 // currently in the Dock) -- the latter pre-empts and suppresses the former.
 final class DockWalker {
     private let state: CompanionState
+    private let settings: Settings
     var onPositionChange: ((CGPoint) -> Void)?
     var onFootToggle: (() -> Void)?
 
@@ -35,8 +36,9 @@ final class DockWalker {
     /// Calibrated visually against the real Dock, not derived from math.
     private static let verticalSeatOffset: CGFloat = 6
 
-    init(state: CompanionState) {
+    init(state: CompanionState, settings: Settings = .shared) {
         self.state = state
+        self.settings = settings
         state.$targetApp
             .removeDuplicates()
             .sink { [weak self] target in
@@ -125,7 +127,8 @@ final class DockWalker {
     private func attemptMove() {
         // A named target or a homeward walk always takes priority; idle
         // wandering only runs once nothing in particular is going on.
-        guard state.targetApp == nil, !state.isHeadingHome,
+        guard settings.idleWanderEnabled,
+              state.targetApp == nil, !state.isHeadingHome,
               state.displayState == .walking, !stops.isEmpty
         else {
             scheduleNextMove()
@@ -144,7 +147,10 @@ final class DockWalker {
     /// update -- Combine's removeDuplicates means repeated same-target tool
     /// calls, e.g. several Reads in a row, don't re-trigger a walk).
     private func handleTargetChange(_ target: TargetApp?) {
-        guard let target, let stopX = resolveStop(for: target) else {
+        // Walk-to-target turned off behaves exactly like an unresolvable
+        // target: clear it so it can't block idle wander, and let the mood
+        // animation play wherever he already is.
+        guard settings.walkToTargetEnabled, let target, let stopX = resolveStop(for: target) else {
             // Also covers an unresolvable target (e.g. Terminal isn't
             // currently open) -- same staleness problem as below applies:
             // leaving it set would block idle wander indefinitely on an
@@ -176,6 +182,13 @@ final class DockWalker {
     /// only makes sense if nothing activity-driven is already in charge of
     /// where Clawd's headed.
     private func handleRefocus() {
+        // Walking home is only the *movement* half of a refocus -- the idle
+        // clock still needs backdating either way, or turning this off would
+        // silently also disable "comes back already sleepy."
+        guard settings.walkHomeEnabled else {
+            state.markHomeArrival()
+            return
+        }
         guard state.targetApp == nil, let homeX = resolveHome() else { return }
         state.isHeadingHome = true
         animate(
@@ -230,7 +243,10 @@ final class DockWalker {
             scheduleNextMove()
             return
         }
-        let duration = min(2.5, max(0.6, abs(distance) / 90.0))
+        // Clamped at both ends regardless of the configured speed, so a very
+        // short hop still reads as a walk and a cross-Dock trek doesn't
+        // crawl.
+        let duration = min(2.5, max(0.35, abs(distance) / max(1, settings.walkSpeed)))
         let startTime = Date()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] tick in

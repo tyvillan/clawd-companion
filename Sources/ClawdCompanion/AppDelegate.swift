@@ -9,7 +9,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var focusWatcher: FocusWatcher!
     private var hoverWatcher: HoverWatcher!
     private var fullScreenWatcher: FullScreenWatcher!
+    private var statusItemController: StatusItemController!
+    private var alerter: CompletionAlerter!
+    private var hosting: NSHostingView<CompanionView>!
     private let state = CompanionState()
+    private let settings = Settings.shared
     private var cancellables = Set<AnyCancellable>()
 
     private var windowSize = NSSize.zero
@@ -20,14 +24,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// ~50% of a real Dock icon's size (nudged up from 40% per request --
     /// still comfortably smaller than the icons themselves), clamped in case
-    /// tile-size detection fails entirely (Tier 3 fallback in DockWalker).
-    private static func pixelSize(forMeasuredTileSize tileSize: CGFloat) -> CGFloat {
+    /// tile-size detection fails entirely (Tier 3 fallback in DockWalker),
+    /// then scaled by the user's size preference. The clamp is applied
+    /// before the multiplier so the setting can still take him deliberately
+    /// larger than the Dock-derived default.
+    private static func pixelSize(forMeasuredTileSize tileSize: CGFloat, scale: Double) -> CGFloat {
         let raw = (tileSize * 0.5) / CGFloat(MascotSprite.cols)
-        return min(5, max(2, raw))
+        return min(5, max(2, raw)) * scale
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory) // no Dock icon, no menu bar item
+        // .accessory keeps him out of the Dock and the app switcher; the
+        // status bar item below is the app's only chrome.
+        NSApp.setActivationPolicy(.accessory)
+
+        alerter = CompletionAlerter(settings: settings)
+        statusItemController = StatusItemController(settings: settings, alerter: alerter)
+        statusItemController.install()
 
         focusWatcher = FocusWatcher(state: state)
         fullScreenWatcher = FullScreenWatcher(state: state)
@@ -36,7 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         walker.requestAccessibilityIfNeeded()
         walker.primeGeometry() // measures the real Dock before we size the window
 
-        let pixelSize = Self.pixelSize(forMeasuredTileSize: walker.measuredTileSize)
+        let pixelSize = Self.pixelSize(
+            forMeasuredTileSize: walker.measuredTileSize,
+            scale: settings.scaleMultiplier
+        )
         windowSize = CompanionView.windowSize(pixelSize: pixelSize)
 
         let newPanel = NSPanel(
@@ -63,12 +79,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         newPanel.isMovableByWindowBackground = false
         newPanel.isMovable = false
 
-        let hosting = NSHostingView(rootView: CompanionView(state: state, pixelSize: pixelSize))
-        hosting.frame = NSRect(origin: .zero, size: windowSize)
-        newPanel.contentView = hosting
+        let hostingView = NSHostingView(rootView: CompanionView(state: state, pixelSize: pixelSize))
+        hostingView.frame = NSRect(origin: .zero, size: windowSize)
+        newPanel.contentView = hostingView
         newPanel.orderFrontRegardless()
         panel = newPanel
+        hosting = hostingView
         hoverWatcher = HoverWatcher(state: state, panel: newPanel)
+        statusItemController.attachContextMenu(to: newPanel)
 
         walker.onPositionChange = { [weak self] point in
             self?.moveWindow(to: point)
@@ -93,11 +111,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
 
         state.$mood
+            .removeDuplicates()
             .sink { [weak self] mood in
-                guard let self, mood == .celebrating, self.state.isAnyAppFullScreen else { return }
+                guard let self, mood == .celebrating else { return }
+                self.alerter.fire()
+                guard self.settings.peekEnabled, self.state.isAnyAppFullScreen else { return }
                 self.performCompletionPeek()
             }
             .store(in: &cancellables)
+
+        // Resizing has to rebuild the sprite view and the panel frame
+        // together -- CompanionView takes pixelSize as a stored constant and
+        // AppKit clips to the window's own frame, so changing one without
+        // the other either does nothing visible or crops him.
+        settings.$scaleMultiplier
+            .removeDuplicates()
+            .dropFirst() // the launch value is already applied above
+            .sink { [weak self] scale in
+                self?.applyScale(scale)
+            }
+            .store(in: &cancellables)
+
+        // `open -a ClawdCompanion --args --settings` (or running the binary
+        // with the flag) opens Settings directly -- the way in when the menu
+        // bar has no room left for the status item.
+        if CommandLine.arguments.contains("--settings") {
+            statusItemController.presentSettings()
+        }
+    }
+
+    private func applyScale(_ scale: Double) {
+        guard let panel, let hosting, let dockWalker else { return }
+        let pixelSize = Self.pixelSize(forMeasuredTileSize: dockWalker.measuredTileSize, scale: scale)
+        windowSize = CompanionView.windowSize(pixelSize: pixelSize)
+        hosting.rootView = CompanionView(state: state, pixelSize: pixelSize)
+        hosting.frame = NSRect(origin: .zero, size: windowSize)
+        panel.setContentSize(windowSize)
+        // Re-anchor immediately: moveWindow centers on the Dock position
+        // using windowSize, so a resize without this leaves him visibly
+        // off-center until his next walk.
+        moveWindow(to: dockWalker.position)
     }
 
     private func moveWindow(to anchor: CGPoint) {
@@ -127,7 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.animator().setFrameOrigin(NSPoint(x: x, y: peekY))
         }, completionHandler: { [weak self] in
             guard let self else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + self.settings.peekDuration) {
                 NSAnimationContext.runAnimationGroup({ ctx in
                     ctx.duration = 0.4
                     ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)

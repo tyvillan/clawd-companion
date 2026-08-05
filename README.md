@@ -113,6 +113,22 @@ Hovering the mouse over him fades him to 20% opacity so he never blocks somethin
 
 ![Hover fade](docs/gifs/hover_fade.gif)
 
+## Settings
+
+Clawd puts a small mascot glyph in the menu bar; click it for **Settings…** or **Quit**. You can also **right-click Clawd himself** to get the same menu, and `open -a ClawdCompanion --args --settings` opens Settings directly — both exist because a full menu bar (or a notched display) can leave a new status item with nowhere to draw.
+
+| Setting | What it does |
+| --- | --- |
+| **Size** | Multiplies the Dock-derived sprite size (0.6×–2.0×). Applies immediately. |
+| **Walk speed** | Points per second while walking. Trip duration is still clamped at both ends. |
+| **Wander when idle** | Turns off the random ambling between Dock icons. |
+| **Walk to the app a tool is using** | Turns off Finder/Terminal/browser targeting; moods play in place instead. |
+| **Walk home on refocus** | Turns off the walk back to VS Code. He still arrives sleepy — the idle clock is unaffected. |
+| **Full-screen peek** | Toggle, plus how long he holds at the top of the peek. |
+| **On completion** | Optionally play a system sound (with a preview button) and/or post a notification. Both off by default; the notification permission is requested the first time you switch it on, not at launch. |
+
+Preferences live in `UserDefaults` under `com.tyvillan.clawdcompanion`.
+
 ## Also worth knowing
 
 - **Full-screen apps**: Clawd hides completely while any other app is in real macOS fullscreen, and briefly peeks up from the bottom edge of the screen to signal a completed response before sinking back out of view.

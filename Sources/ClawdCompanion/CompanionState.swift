@@ -20,10 +20,37 @@ final class CompanionState: ObservableObject {
             } else {
                 idleSince = nil
                 isDrowsy = false
+                // Fresh real activity is a new reason to nag if focus gets
+                // lost again -- re-arm the jump-for-attention nag rather
+                // than leaving it permanently suppressed after the first
+                // time it's acknowledged.
+                hasAcknowledgedAttention = false
             }
         }
     }
-    @Published var isVSCodeFocused: Bool = true
+    /// True while Claude Code's permission mode is "plan" -- driven by the
+    /// hook reading the common `permission_mode` field on every event, not
+    /// tied to any specific tool, since plan mode spans many tool calls
+    /// between EnterPlanMode and ExitPlanMode. Purely a visual overlay (see
+    /// CompanionView's blueprint prop) layered on top of whatever
+    /// mood/displayState is already happening, not a mood of its own.
+    @Published var isPlanning: Bool = false
+    @Published var isVSCodeFocused: Bool = true {
+        didSet {
+            guard isVSCodeFocused != oldValue else { return }
+            if isVSCodeFocused {
+                // Regaining focus acknowledges whatever jump-for-attention
+                // nag was playing -- don't jump again on the next unfocus
+                // unless new activity (above) gives a fresh reason to.
+                hasAcknowledgedAttention = true
+            }
+        }
+    }
+    /// True once a jump-for-attention has been "seen" (focus regained at
+    /// least once since it started) and not yet re-armed by new activity.
+    /// While true, losing focus again falls through to ordinary idle
+    /// wander/sleep instead of re-jumping -- see displayState.
+    @Published private(set) var hasAcknowledgedAttention: Bool = false
     @Published var targetApp: TargetApp?
     /// True only while DockWalker is actively mid-stride toward a named
     /// target (not idle wander) -- CompanionView uses this to pick up the
@@ -80,15 +107,17 @@ final class CompanionState: ObservableObject {
     }
 
     /// What should actually be displayed/animated right now. Walking only
-    /// happens when nothing else is going on AND VS Code has focus; if
-    /// that's not true but there's also no real Claude activity, jump for
-    /// attention instead. Long uninterrupted idling naps in place rather
-    /// than wandering. Any real activity (non-idle mood) always wins,
-    /// regardless of focus -- the jump nag is specifically about idle
-    /// neglect, not about interrupting active work.
+    /// happens when nothing else is going on; if VS Code is unfocused and
+    /// that hasn't been acknowledged yet, jump for attention instead. Long
+    /// uninterrupted idling naps in place rather than wandering. Any real
+    /// activity (non-idle mood) always wins, regardless of focus -- the
+    /// jump nag is specifically about idle neglect, not about interrupting
+    /// active work. Once a jump has been acknowledged (focus regained),
+    /// losing focus again just resumes ordinary idle wander/sleep rather
+    /// than nagging on every single tab-away.
     var displayState: DisplayState {
         guard mood == .idle else { return .active(mood) }
-        if !isVSCodeFocused { return .jumping }
+        if !isVSCodeFocused && !hasAcknowledgedAttention { return .jumping }
         // Any of the three ways he can be mid-transit (idle wander, walking
         // home after a refocus, walking to a named target) has to keep
         // reporting .walking regardless of isDrowsy -- otherwise the sleep

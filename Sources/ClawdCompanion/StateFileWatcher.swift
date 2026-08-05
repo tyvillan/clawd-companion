@@ -65,6 +65,7 @@ final class StateFileWatcher {
 
         let rawTarget = obj["target"] as? String
         let target = rawTarget.flatMap { TargetApp(rawValue: $0) }
+        let planning = obj["planning"] as? Bool ?? false
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -73,6 +74,7 @@ final class StateFileWatcher {
             } else {
                 self.state.mood = mood
                 self.state.targetApp = target
+                self.state.isPlanning = planning
             }
         }
     }

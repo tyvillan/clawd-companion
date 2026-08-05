@@ -13,7 +13,7 @@ Claude Code tool call
  ~/.claude/hooks/clawd-companion.sh   (PreToolUse / Stop / SessionStart hooks)
         │  writes
         ▼
- ~/.claude/creature/state.json        { "state": "typing", "target": "finder" }
+ ~/.claude/creature/state.json        { "state": "typing", "target": "finder", "planning": false }
         │  watched via kqueue
         ▼
  CompanionState.displayState          walking | jumping | sleeping | active(mood)
@@ -25,10 +25,11 @@ Claude Code tool call
 `displayState` is the single source of truth for what's on screen. Roughly:
 
 - **Any real activity** (a mood other than idle) always wins — typing, thinking, etc. play in place regardless of anything else.
-- **Idle + VS Code unfocused** → jump for attention.
-- **Idle + focused + mid-transit** (walking to a target, walking home, or idly wandering) → keep walking until he actually arrives. Sleep never interrupts a walk in progress.
-- **Idle + focused + arrived + been idle 45s+** → sleeping.
+- **Idle + VS Code unfocused, not yet acknowledged** → jump for attention. Refocusing acknowledges it — losing focus again just resumes idle wander/sleep instead of nagging every single time. New activity re-arms the nag.
+- **Idle + mid-transit** (walking to a target, walking home, or idly wandering) → keep walking until he actually arrives. Sleep never interrupts a walk in progress.
+- **Idle + arrived + been idle 45s+** → sleeping.
 - Otherwise → idle wander around the Dock.
+- **Plan mode**: whenever Claude Code's permission mode is `"plan"`, a held blueprint is layered on top of whatever's already showing — independent of the rules above, since plan mode can span many tool calls and moods.
 
 ## Stages & animations
 
@@ -36,15 +37,21 @@ Every GIF below is a real capture of the running app.
 
 ### Idle wander
 
-Between tool calls, Clawd ambles between random Dock icons and blinks occasionally.
+Between tool calls, Clawd ambles between random Dock icons. Standing still between wanders, he glances side to side on a slow cycle rather than just blinking.
 
 ![Idle wander](docs/gifs/idle_walking.gif)
 
-### Typing / Working
+### Typing
 
-`Bash`, and other tool calls that imply active work, drive a quick alternating-leg animation in place.
+`Edit`, `Write`, and other file-modification tools drive a quick alternating-leg animation in place.
 
-![Typing / working](docs/gifs/typing_working.gif)
+![Typing](docs/gifs/typing_working.gif)
+
+### Building
+
+`Bash` and other tool calls that don't fit a more specific mood plant him in a stance swinging a hammer on a strike beat — reads as "making something happen" rather than typing.
+
+![Building](docs/gifs/hammer.gif)
 
 ### Thinking
 
@@ -57,6 +64,12 @@ A slow, gentle pulse while Claude is reasoning.
 Eyes dart left and right with a slight lean — shown for tools that "look at" something (`Read`, `Grep`, `Glob`).
 
 ![Inspecting](docs/gifs/inspecting.gif)
+
+### Planning
+
+Whenever Claude Code is in plan mode, Clawd holds a blueprint — shown for as long as `permission_mode` reports `"plan"`, layered on top of whatever else he's doing in the meantime.
+
+![Planning](docs/gifs/blueprint.gif)
 
 ### Celebrating
 

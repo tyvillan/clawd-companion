@@ -34,6 +34,15 @@ struct CompanionView: View {
     /// which is sized in absolute points, not pixelSize units.
     private static let sleepZStartOffset: CGFloat = 8
 
+    /// Half-width, from the sprite's own horizontal center, that the held
+    /// blueprint prop's frame extends to on its offset side -- used to size
+    /// the window's width headroom so enlarging the prop can't clip against
+    /// the window's own hard edge (there's zero built-in horizontal margin
+    /// otherwise, the same class of bug the sleep Z's hit before).
+    private static func blueprintHalfExtent(pixelSize: CGFloat) -> CGFloat {
+        spriteSize(pixelSize: pixelSize).width * 0.34 + blueprintSize(pixelSize: pixelSize) / 2
+    }
+
     /// The window/hosting-view size AppDelegate should actually allocate,
     /// padded above the sprite so a full-amplitude hop -- or a fully-risen
     /// sleep Z -- still has somewhere to render. AppKit windows clip hard to
@@ -44,11 +53,19 @@ struct CompanionView: View {
     /// offset -- a tighter margin here previously still clipped the glyph
     /// (confirmed by live screenshot testing), since Text's reported frame
     /// includes font leading/metrics beyond just the visible glyph ink.
+    /// Width, unlike height, has zero headroom by default (the sprite's
+    /// frame IS the window's width) -- padded symmetrically so the sprite
+    /// stays centered on its Dock anchor (see AppDelegate.moveWindow), with
+    /// a 30% safety margin the same way the sleep side over-provisions.
     static func windowSize(pixelSize: CGFloat) -> CGSize {
         let sprite = spriteSize(pixelSize: pixelSize)
         let jumpHeadroom = bounceAmplitude(pixelSize: pixelSize) * 1.15
         let sleepHeadroom = sleepZRise(pixelSize: pixelSize) + sleepZStartOffset + 40
-        return CGSize(width: sprite.width, height: sprite.height + max(jumpHeadroom, sleepHeadroom))
+        let widthHeadroom = max(0, blueprintHalfExtent(pixelSize: pixelSize) * 2 - sprite.width) * 1.3
+        return CGSize(
+            width: sprite.width + widthHeadroom,
+            height: sprite.height + max(jumpHeadroom, sleepHeadroom)
+        )
     }
 
     private var spriteSize: CGSize { Self.spriteSize(pixelSize: pixelSize) }
@@ -61,7 +78,10 @@ struct CompanionView: View {
         // place -- it reads as "hustling over there."
         if state.isTargetWalking || state.isHeadingHome { return 0.12 }
         switch state.displayState {
-        case .active(.typing), .active(.working): return 0.15
+        case .active(.typing): return 0.15
+        // Slower than typing -- reads as a swing-and-strike beat rather
+        // than a fast keyboard clatter.
+        case .active(.working): return 0.3
         case .active(.thinking): return 0.5
         case .active(.inspecting): return 0.4
         case .active(.celebrating): return 0.15
@@ -89,6 +109,14 @@ struct CompanionView: View {
 
                 if state.displayState == .sleeping {
                     sleepZOverlay(date: context.date)
+                }
+
+                if state.displayState == .active(.working) {
+                    hammerOverlay(toggle: toggle)
+                }
+
+                if state.isPlanning {
+                    blueprintOverlay()
                 }
             }
         }
@@ -200,6 +228,61 @@ struct CompanionView: View {
         .offset(y: -Self.sleepZStartOffset)
     }
 
+    private static let hammerHandleColor = Color(red: 0.55, green: 0.36, blue: 0.2)
+    private static let hammerHeadColor = Color(red: 0.58, green: 0.58, blue: 0.62)
+
+    /// A held hammer, swinging on the tick/toggle beat -- shown in place of
+    /// the alternating-leg gait for .active(.working), since a planted
+    /// swinging stance reads as "building something" more than a walk cycle
+    /// would. Built from plain rects sized to pixelSize (not new grid art)
+    /// so it reads as the same blocky pixel-art language as the sprite.
+    private func hammerOverlay(toggle: Bool) -> some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(Self.hammerHeadColor)
+                .frame(width: pixelSize * 2.2, height: pixelSize * 1.1)
+            Rectangle()
+                .fill(Self.hammerHandleColor)
+                .frame(width: pixelSize * 0.5, height: pixelSize * 2.6)
+        }
+        // Raised back on the "up" beat, struck down past vertical on the
+        // "down" beat -- anchored at the bottom so it pivots like a swing
+        // rather than sliding.
+        .rotationEffect(.degrees(toggle ? 20 : -50), anchor: .bottom)
+        .offset(x: spriteSize.width * 0.36, y: spriteSize.height * 0.08)
+    }
+
+    // Swapped from the initial paper-white/line-blue to match a real
+    // architectural blueprint's look: blue sheet, white linework.
+    private static let blueprintPaperColor = Color(red: 0.3, green: 0.42, blue: 0.72)
+    private static let blueprintLineColor = Color(red: 0.93, green: 0.94, blue: 0.97)
+
+    /// The held blueprint's overall (square) frame size -- shared with
+    /// windowSize's headroom calculation so the two can never drift out of
+    /// sync with each other.
+    private static func blueprintSize(pixelSize: CGFloat) -> CGFloat {
+        pixelSize * 5.5
+    }
+
+    /// A held blueprint/spec sheet, shown for as long as Claude Code is in
+    /// plan mode (state.isPlanning) -- layered on top of whatever else is
+    /// animating, since plan mode spans many tool calls and moods rather
+    /// than being a mood of its own.
+    private func blueprintOverlay() -> some View {
+        let size = Self.blueprintSize(pixelSize: pixelSize)
+        return VStack(spacing: pixelSize * 0.55) {
+            ForEach(0..<3, id: \.self) { _ in
+                Rectangle()
+                    .fill(Self.blueprintLineColor)
+                    .frame(width: pixelSize * 3.4, height: pixelSize * 0.45)
+            }
+        }
+        .padding(pixelSize * 0.75)
+        .background(Self.blueprintPaperColor)
+        .frame(width: size, height: size)
+        .offset(x: spriteSize.width * 0.34, y: spriteSize.height * 0.12)
+    }
+
     private func drawEye(_ gc: GraphicsContext, in rect: CGRect, style: MascotSprite.EyeStyle) {
         switch style {
         case .open:
@@ -231,9 +314,11 @@ struct CompanionView: View {
             return state.footToggle ? 1 : -1
         }
         switch state.displayState {
-        case .active(.typing), .active(.working):
+        case .active(.typing):
             return toggle ? 1 : -1
         default:
+            // .active(.working) stays planted -- the hammer swing (see
+            // hammerOverlay) carries the motion instead of a leg gait.
             return 0
         }
     }
@@ -250,9 +335,20 @@ struct CompanionView: View {
             return .closed
         case .active(.inspecting):
             return toggle ? .lookLeft : .lookRight
-        case .walking:
-            // A brief idle blink every so often -- otherwise a static stare.
+        case .walking where state.isWandering:
+            // Actually mid-stride -- a brief blink every so often, otherwise
+            // a static stare into the direction of travel.
             return tick % 9 == 0 ? .closed : .open
+        case .walking:
+            // Standing still between wanders -- glance side to side on a
+            // slow cycle so idling reads as "looking around" rather than
+            // either a static stare or a stalled walk cycle.
+            switch tick % 18 {
+            case 0, 1: return .lookLeft
+            case 2, 3: return .lookRight
+            case 9: return .closed
+            default: return .open
+            }
         default:
             return .open
         }
@@ -262,6 +358,10 @@ struct CompanionView: View {
         switch state.displayState {
         case .active(.celebrating), .jumping:
             return toggle ? -bounceAmplitude : 0
+        case .active(.working):
+            // A small downward dip synced to the hammer's strike beat --
+            // reads as the impact, not a hop.
+            return toggle ? bounceAmplitude * 0.08 : 0
         case .sleeping:
             // A continuous sine wave rather than the toggle used elsewhere --
             // sleeping now ticks at 0.1s (to animate the floating Z's

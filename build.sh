@@ -10,9 +10,12 @@ swift build -c release
 
 APP_DIR="build/ClawdCompanion.app"
 rm -rf "$APP_DIR"
-mkdir -p "$APP_DIR/Contents/MacOS"
+mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp .build/release/ClawdCompanion "$APP_DIR/Contents/MacOS/ClawdCompanion"
 cp Info.plist "$APP_DIR/Contents/Info.plist"
+# Checked in as a built artifact; regenerate with tools/make_icon.py if the
+# mascot's grid or body color ever changes.
+cp Resources/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 
 # This project lives on iCloud Drive: Finder/Spotlight sometimes re-stamps
 # AppleDouble/resource-fork extended attributes on freshly-created files

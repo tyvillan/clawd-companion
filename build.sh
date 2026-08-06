@@ -6,12 +6,19 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-swift build -c release
+# Both slices in one binary via lipo under the hood, so the app runs
+# unmodified on Intel Macs too -- not just the Apple Silicon this is built
+# on. SwiftPM puts a universal build under .build/apple/... rather than the
+# plain .build/release used for a single-arch build, so the output path is
+# asked for rather than assumed.
+ARCH_FLAGS=(--arch arm64 --arch x86_64)
+swift build -c release "${ARCH_FLAGS[@]}"
+BIN_PATH="$(swift build -c release "${ARCH_FLAGS[@]}" --show-bin-path)"
 
 APP_DIR="build/ClawdCompanion.app"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-cp .build/release/ClawdCompanion "$APP_DIR/Contents/MacOS/ClawdCompanion"
+cp "$BIN_PATH/ClawdCompanion" "$APP_DIR/Contents/MacOS/ClawdCompanion"
 cp Info.plist "$APP_DIR/Contents/Info.plist"
 # Checked in as a built artifact; regenerate with tools/make_icon.py if the
 # mascot's grid or body color ever changes.

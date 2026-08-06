@@ -152,9 +152,31 @@ Preferences live in `UserDefaults` under `com.tyvillan.clawdcompanion`.
 - **Sizing**: he's sized relative to your actual Dock's measured tile size (not a fixed constant), so he scales sensibly across displays and Dock size settings.
 - **Signing**: `build.sh` signs with a stable local "Apple Development" identity rather than an ad-hoc signature, so the Accessibility permission grant survives rebuilds.
 
+## Requirements
+
+macOS 14 (Sonoma) or later, Apple Silicon or Intel — `build.sh` produces a universal binary, so either Mac runs it unmodified.
+
 ## Setup
 
-1. `./build.sh` — builds and code-signs `build/ClawdCompanion.app`.
-2. Grant Accessibility permission when prompted (needed to read Dock icon positions and walk to them precisely).
-3. Wire up the hooks in `~/.claude/settings.json` to call `~/.claude/hooks/clawd-companion.sh` on `SessionStart`, `PreToolUse`, and `Stop`.
-4. Launch the app — `open build/ClawdCompanion.app`.
+Two ways to get the app itself; everything after that (Accessibility, hooks) is the same either way.
+
+### Option A: Download a release
+
+1. Grab the zip from [Releases](https://github.com/tyvillan/clawd-companion/releases), unzip it, and drag `ClawdCompanion.app` wherever you keep apps.
+2. **First launch will be blocked by Gatekeeper.** This app is signed with a personal Apple Development certificate, not a paid Developer ID, so it isn't notarized and macOS refuses to open it by default — this is expected, not a broken download. Right-click (or Control-click) the app and choose **Open**, or if that option is unavailable, go to **System Settings → Privacy & Security → Security** and click **Open Anyway** next to the Gatekeeper warning that appears after the first blocked attempt. You only need to do this once.
+
+### Option B: Build from source
+
+```
+git clone git@github.com:tyvillan/clawd-companion.git
+cd clawd-companion
+./build.sh
+```
+
+Locally-built apps aren't quarantined, so this has no Gatekeeper prompt at all. Requires Xcode's Command Line Tools (`xcode-select --install`).
+
+### Then, either way
+
+1. Grant Accessibility permission when prompted (needed to read Dock icon positions and walk to them precisely).
+2. Wire up the hooks in `~/.claude/settings.json` to call `~/.claude/hooks/clawd-companion.sh` on `SessionStart`, `PreToolUse`, and `Stop`.
+3. Launch the app — `open ClawdCompanion.app` (or `open build/ClawdCompanion.app` if you built it).

@@ -10,7 +10,7 @@ Clawd is a borderless, always-on-top `NSPanel` rendered with SwiftUI. A Claude C
 Claude Code tool call  (session_id: abc123)
         │
         ▼
- ~/.claude/hooks/clawd-companion.sh   (PreToolUse / Stop / SessionStart hooks)
+ ~/.claude/hooks/clawd-companion.sh   (PreToolUse / Stop / SessionStart / Notification hooks)
         │  writes
         ▼
  ~/.claude/creature/sessions/abc123.json
@@ -33,6 +33,7 @@ There's one file per session and the file's existence *is* that session's lifeti
 - **Idle + arrived + been idle 45s+** → sleeping.
 - Otherwise → idle wander around the Dock.
 - **Plan mode**: whenever Claude Code's permission mode is `"plan"`, a held blueprint is layered on top of whatever's already showing — independent of the rules above, since plan mode can span many tool calls and moods.
+- **Needs your input**: a permission prompt (or Claude idle waiting on you) flashes him white and walks him back to the VS Code icon, regardless of focus — this is the one case that overrides an in-progress walk rather than waiting for it to finish.
 
 ## Stages & animations
 
@@ -92,6 +93,14 @@ If VS Code loses focus while Claude is otherwise idle, Clawd hops in place near 
 
 ![Jumping](docs/gifs/jumping.gif)
 
+### Needs your input
+
+A permission prompt, or Claude idle waiting on you (the `Notification` hook), flashes him white with a hard scale pulse and walks him straight back to the VS Code icon — regardless of focus, and pre-empting whatever else he was doing. Also fires the completion notification/sound (see [Settings](#settings)) with its own message, so you'll hear about it even if you're not looking at the Dock at all.
+
+![Needs your input](docs/gifs/needs_attention.gif)
+
+> The flash is a genuine color change, not a fixed image, so on a light GitHub theme the white frames blend into the page background — it reads clearly against the real Dock, and the alternating orange frames still show through in the GIF.
+
 ### Sleeping
 
 After ~45 uninterrupted idle seconds *and* having actually arrived wherever he was headed, Clawd's eyes close, he settles into a slow breathing bob, and a few "Z"s float up and fade away.
@@ -142,7 +151,7 @@ Clawd puts a small mascot glyph in the menu bar; click it for **Settings…** or
 | **Walk to the app a tool is using** | Turns off Finder/Terminal/browser targeting; moods play in place instead. |
 | **Walk home on refocus** | Turns off the walk back to VS Code. He still arrives sleepy — the idle clock is unaffected. |
 | **Full-screen peek** | Toggle, plus how long he holds at the top of the peek. |
-| **On completion** | Optionally play a system sound (with a preview button) and/or post a notification. Both off by default. The notification permission is requested when you switch it on — and again at launch if it's already on — and the row tells you if macOS is blocking them. |
+| **Alerts** | Optionally play a system sound (with a preview button) and/or post a notification, for both a finished response and a prompt needing your input. Both off by default. The notification permission is requested when you switch it on — and again at launch if it's already on — and the row tells you if macOS is blocking them. |
 
 Preferences live in `UserDefaults` under `com.tyvillan.clawdcompanion`.
 

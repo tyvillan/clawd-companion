@@ -84,9 +84,15 @@ final class StateFileWatcher {
             if mood == .quit {
                 self.onQuit()
             } else {
-                self.state.mood = mood
+                // targetApp and isPlanning first: @Published notifies
+                // subscribers synchronously, so anything reacting to mood
+                // (e.g. DockWalker deciding whether a walk is appropriate)
+                // would otherwise see this write's *old* targetApp for the
+                // rest of this block -- they're all part of the same state
+                // update and should already agree by the time mood fires.
                 self.state.targetApp = target
                 self.state.isPlanning = planning
+                self.state.mood = mood
             }
         }
     }

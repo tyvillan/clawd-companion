@@ -98,10 +98,17 @@ final class SessionCompanion {
         state.$mood
             .removeDuplicates()
             .sink { [weak self] mood in
-                guard let self, mood == .celebrating else { return }
-                self.alerter.fire()
-                guard self.settings.peekEnabled, self.state.isAnyAppFullScreen else { return }
-                self.performCompletionPeek()
+                guard let self else { return }
+                switch mood {
+                case .celebrating:
+                    self.alerter.fireCompletion()
+                    guard self.settings.peekEnabled, self.state.isAnyAppFullScreen else { return }
+                    self.performCompletionPeek()
+                case .needsAttention:
+                    self.alerter.fireNeedsAttention()
+                default:
+                    break
+                }
             }
             .store(in: &cancellables)
     }

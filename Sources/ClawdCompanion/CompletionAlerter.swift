@@ -48,12 +48,25 @@ final class CompletionAlerter: NSObject, ObservableObject, UNUserNotificationCen
         completionHandler([.banner, .list])
     }
 
-    func fire() {
+    /// Claude finished responding.
+    func fireCompletion() {
+        fire(body: "Finished responding.")
+    }
+
+    /// Claude is blocked on the user -- a permission prompt, or idle waiting
+    /// on input. A separate entry point (rather than a parameter on the mood
+    /// sink that calls this) so each call site names what actually happened,
+    /// not just which UI text results.
+    func fireNeedsAttention() {
+        fire(body: "There's a prompt that needs your attention.")
+    }
+
+    private func fire(body: String) {
         if settings.soundEnabled {
             NSSound(named: settings.soundName)?.play()
         }
         if settings.notificationsEnabled {
-            postBanner()
+            postBanner(body: body)
         }
     }
 
@@ -85,14 +98,14 @@ final class CompletionAlerter: NSObject, ObservableObject, UNUserNotificationCen
         }
     }
 
-    private func postBanner() {
+    private func postBanner(body: String) {
         // Only a hard denial is worth skipping; "not yet determined" still
         // gets posted, since the request may simply not have come back yet.
         guard notificationsAuthorized != false else { return }
 
         let content = UNMutableNotificationContent()
         content.title = "Claude Code"
-        content.body = "Finished responding."
+        content.body = body
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }

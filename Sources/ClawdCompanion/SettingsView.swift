@@ -55,7 +55,10 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("On completion") {
+            Section("Alerts") {
+                Text("When a response finishes, or a prompt needs your attention.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Toggle("Play a sound", isOn: $settings.soundEnabled)
                 LabeledContent("Sound") {
                     HStack {

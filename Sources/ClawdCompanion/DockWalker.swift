@@ -53,6 +53,13 @@ final class DockWalker {
                 if focused { self?.handleRefocus() }
             }
             .store(in: &cancellables)
+
+        state.$mood
+            .removeDuplicates()
+            .sink { [weak self] mood in
+                if mood == .needsAttention { self?.handleNeedsAttention() }
+            }
+            .store(in: &cancellables)
     }
 
     func requestAccessibilityIfNeeded() {
@@ -210,6 +217,35 @@ final class DockWalker {
                 state?.isHeadingHome = false
                 state?.markHomeArrival()
             }
+        )
+    }
+
+    /// Called whenever mood becomes .needsAttention (a permission prompt, or
+    /// Claude idle waiting on input) -- walks home regardless of focus,
+    /// unlike handleRefocus, since the whole point is to fetch you back when
+    /// you're *not* looking at VS Code. Deliberately doesn't call
+    /// markHomeArrival on arrival: that backdates the idle clock to make him
+    /// look drowsy, which reads as "you were away a while" -- the wrong
+    /// message for "come look at this now."
+    ///
+    /// Doesn't guard on `!state.isHeadingHome` (unlike its own isStillValid
+    /// below) -- animate() unconditionally replaces the shared `timer`, so
+    /// calling it again is exactly what recovers a walk whose own timer got
+    /// silently reassigned out from under it by a second call landing mid-
+    /// flight (the same hazard handleRefocus already runs with). Refusing to
+    /// re-trigger here would instead leave isHeadingHome stuck true forever
+    /// whenever that happens, permanently blocking every future attention
+    /// walk -- worse than the rare double-animate it would have prevented.
+    private func handleNeedsAttention() {
+        guard settings.walkHomeEnabled,
+              state.targetApp == nil,
+              let homeX = resolveHome()
+        else { return }
+        state.isHeadingHome = true
+        animate(
+            to: homeX,
+            isStillValid: { [weak state] in state?.isHeadingHome == true },
+            onFinish: { [weak state] in state?.isHeadingHome = false }
         )
     }
 

@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 enum CompanionMood: String, Codable {
-    case idle, thinking, typing, inspecting, working, celebrating, waving, quit
+    case idle, thinking, typing, inspecting, working, celebrating, waving, needsAttention, quit
 }
 
 /// Which dock app the current Claude Code activity relates to, driving

@@ -90,6 +90,8 @@ struct CompanionView: View {
         case .active(.inspecting): return 0.4
         case .active(.celebrating): return 0.15
         case .active(.waving): return 0.3
+        // Fast enough to read as an urgent flash rather than a fade.
+        case .active(.needsAttention): return 0.1
         case .jumping: return 0.35
         // Faster than the other in-place moods despite sleeping being the
         // "calmest" one -- the floating Z's and breathing motion need a
@@ -106,7 +108,11 @@ struct CompanionView: View {
             let toggle = tick % 2 == 0
 
             ZStack {
-                spriteCanvas(footOffset: footOffset(toggle: toggle), eyeStyle: eyeStyle(tick: tick, toggle: toggle))
+                spriteCanvas(
+                    footOffset: footOffset(toggle: toggle),
+                    eyeStyle: eyeStyle(tick: tick, toggle: toggle),
+                    bodyColor: displayColor(toggle: toggle)
+                )
                     .offset(y: bounceOffset(toggle: toggle, date: context.date))
                     .rotationEffect(.degrees(leanDegrees(toggle: toggle)))
                     .scaleEffect(pulseScale(toggle: toggle))
@@ -136,6 +142,11 @@ struct CompanionView: View {
             switch newMood {
             case .celebrating: revertDelay = 1.5
             case .waving: revertDelay = 1.8
+            // Just the flash's own duration -- if DockWalker also started a
+            // walk home for this, isHeadingHome keeps displayState reporting
+            // .walking (see CompanionState.displayState) well after mood
+            // reverts here, so the walk itself finishes on its own schedule.
+            case .needsAttention: revertDelay = 2.2
             default: return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + revertDelay) {
@@ -144,7 +155,7 @@ struct CompanionView: View {
         }
     }
 
-    private func spriteCanvas(footOffset: Int, eyeStyle: MascotSprite.EyeStyle) -> some View {
+    private func spriteCanvas(footOffset: Int, eyeStyle: MascotSprite.EyeStyle, bodyColor: Color) -> some View {
         Canvas { gc, _ in
             let grid = MascotSprite.grid(footOffset: footOffset)
             // Body cells are accumulated into one Path and filled in a
@@ -166,12 +177,22 @@ struct CompanionView: View {
                     case .body:
                         bodyPath.addRect(rect)
                     case .eye:
-                        drawEye(gc, in: rect, style: eyeStyle)
+                        drawEye(gc, in: rect, style: eyeStyle, bodyColor: bodyColor)
                     }
                 }
             }
             gc.fill(bodyPath, with: .color(bodyColor))
         }
+    }
+
+    /// White on alternating ticks while a prompt needs attention, so the
+    /// flash reads as an urgent alert rather than a color change -- every
+    /// other use of bodyColor (sleep Z's, the hammer's grip mark) stays on
+    /// the session's real tint, since those moods can't co-occur with this
+    /// one.
+    private func displayColor(toggle: Bool) -> Color {
+        guard state.displayState == .active(.needsAttention) else { return bodyColor }
+        return toggle ? .white : bodyColor
     }
 
     private static let sleepZCount = 3
@@ -323,7 +344,7 @@ struct CompanionView: View {
         .offset(x: spriteSize.width * 0.34, y: spriteSize.height * 0.12)
     }
 
-    private func drawEye(_ gc: GraphicsContext, in rect: CGRect, style: MascotSprite.EyeStyle) {
+    private func drawEye(_ gc: GraphicsContext, in rect: CGRect, style: MascotSprite.EyeStyle, bodyColor: Color) {
         switch style {
         case .open:
             gc.fill(Path(rect), with: .color(MascotSprite.eyeColor))
@@ -431,6 +452,10 @@ struct CompanionView: View {
             return toggle ? 1.08 : 1.0
         case .active(.celebrating):
             return toggle ? 1.1 : 1.0
+        // A harder pulse than celebrating's -- paired with the white flash,
+        // this needs to read as an alert, not a happy bounce.
+        case .active(.needsAttention):
+            return toggle ? 1.18 : 1.0
         default:
             return 1.0
         }

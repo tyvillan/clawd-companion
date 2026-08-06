@@ -2,9 +2,9 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: Settings
-    /// Called when the banner toggle is switched on, so the alerter can ask
-    /// the system for authorization at the moment the user opts in.
-    let onNotificationsEnabled: () -> Void
+    /// Observed so the notification row can report a denial instead of the
+    /// toggle sitting on while nothing ever appears.
+    @ObservedObject var alerter: CompletionAlerter
 
     var body: some View {
         Form {
@@ -69,8 +69,16 @@ struct SettingsView: View {
                 .disabled(!settings.soundEnabled)
                 Toggle("Show a notification", isOn: $settings.notificationsEnabled)
                     .onChange(of: settings.notificationsEnabled) { _, enabled in
-                        if enabled { onNotificationsEnabled() }
+                        if enabled { alerter.requestNotificationAuthorizationIfNeeded() }
                     }
+                if settings.notificationsEnabled, alerter.notificationsAuthorized == false {
+                    Text(
+                        "macOS is blocking notifications for Clawd. Turn them on in "
+                            + "System Settings \u{203a} Notifications \u{203a} ClawdCompanion."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                }
             }
 
             Section {

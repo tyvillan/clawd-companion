@@ -3,17 +3,49 @@ import UserNotifications
 
 /// Plays the optional audible/banner alerts when Claude finishes a
 /// response. Both are off by default; notification authorization is
-/// requested the first time the banner setting is switched on rather than
-/// at launch, so an accessory app never prompts unprompted.
-final class CompletionAlerter {
+/// requested when the user opts in rather than at launch, so an accessory
+/// app never prompts unprompted.
+final class CompletionAlerter: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     private let settings: Settings
-    /// Nil until the first authorization attempt -- distinguishes "never
-    /// asked" from "asked and denied", so a denial isn't retried on every
-    /// single completion.
-    private var authorizationGranted: Bool?
+
+    /// The system's real authorization state: true = authorized, false =
+    /// denied, nil = not yet determined. Read from the system rather than
+    /// remembered locally -- a local flag starts nil on every launch, so a
+    /// previously-denied user would be re-asked forever and a previously
+    /// authorized one would look undetermined.
+    @Published private(set) var notificationsAuthorized: Bool?
 
     init(settings: Settings) {
         self.settings = settings
+        super.init()
+
+        // Must be assigned before anything is posted. Without a delegate,
+        // macOS decides on its own not to present a notification from an app
+        // that is currently running -- it is still *delivered*, so the API
+        // reports success and it silently piles up in Notification Centre
+        // with no banner ever shown. That was the whole bug.
+        UNUserNotificationCenter.current().delegate = self
+
+        refreshAuthorization()
+        // A setting that persisted from a previous launch has to re-register
+        // here; previously authorization was only ever requested at the
+        // moment the toggle flipped, so restarting the app with it already on
+        // meant the app never registered at all.
+        if settings.notificationsEnabled {
+            requestNotificationAuthorizationIfNeeded()
+        }
+    }
+
+    /// Tells macOS to actually show the banner even though this app is
+    /// running. Sound is deliberately excluded: the sound toggle is separate,
+    /// and letting the notification carry its own would make banners audible
+    /// regardless of that setting.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .list])
     }
 
     func fire() {
@@ -32,26 +64,35 @@ final class CompletionAlerter {
         NSSound(named: name)?.play()
     }
 
-    /// Called when the banner toggle is switched on. Safe to call
-    /// repeatedly; the system only shows its prompt once per install.
+    /// Called at launch when notifications are already on, and whenever the
+    /// toggle is switched on. Safe to call repeatedly -- the system only
+    /// shows its prompt once, and every call refreshes the cached state.
     func requestNotificationAuthorizationIfNeeded() {
-        guard authorizationGranted == nil else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
-            DispatchQueue.main.async { self?.authorizationGranted = granted }
+            DispatchQueue.main.async { self?.notificationsAuthorized = granted }
+        }
+    }
+
+    func refreshAuthorization() {
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            let value: Bool?
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral: value = true
+            case .denied: value = false
+            default: value = nil
+            }
+            DispatchQueue.main.async { self?.notificationsAuthorized = value }
         }
     }
 
     private func postBanner() {
-        // A denial is remembered (see authorizationGranted) so we don't
-        // hand the system a request it will silently drop every time.
-        guard authorizationGranted != false else { return }
+        // Only a hard denial is worth skipping; "not yet determined" still
+        // gets posted, since the request may simply not have come back yet.
+        guard notificationsAuthorized != false else { return }
 
         let content = UNMutableNotificationContent()
         content.title = "Claude Code"
         content.body = "Finished responding."
-        // Sound is handled separately above so the two toggles stay
-        // independent -- attaching one here would make the banner always
-        // audible regardless of the sound setting.
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }

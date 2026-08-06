@@ -142,7 +142,7 @@ Clawd puts a small mascot glyph in the menu bar; click it for **Settings…** or
 | **Walk to the app a tool is using** | Turns off Finder/Terminal/browser targeting; moods play in place instead. |
 | **Walk home on refocus** | Turns off the walk back to VS Code. He still arrives sleepy — the idle clock is unaffected. |
 | **Full-screen peek** | Toggle, plus how long he holds at the top of the peek. |
-| **On completion** | Optionally play a system sound (with a preview button) and/or post a notification. Both off by default; the notification permission is requested the first time you switch it on, not at launch. |
+| **On completion** | Optionally play a system sound (with a preview button) and/or post a notification. Both off by default. The notification permission is requested when you switch it on — and again at launch if it's already on — and the row tells you if macOS is blocking them. |
 
 Preferences live in `UserDefaults` under `com.tyvillan.clawdcompanion`.
 

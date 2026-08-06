@@ -129,9 +129,10 @@ final class StatusItemController {
             return
         }
 
-        let view = SettingsView(settings: settings) { [weak self] in
-            self?.alerter.requestNotificationAuthorizationIfNeeded()
-        }
+        // Re-read the system's notification state each time Settings opens --
+        // the user may have changed it in System Settings since last time.
+        alerter.refreshAuthorization()
+        let view = SettingsView(settings: settings, alerter: alerter)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 420, height: 680),
             // Resizable so the whole form is reachable on a short display;

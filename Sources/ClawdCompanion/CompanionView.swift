@@ -138,22 +138,26 @@ struct CompanionView: View {
         .frame(width: totalSize.width, height: totalSize.height, alignment: .bottom)
         .opacity(state.isHovering ? 0.2 : 1.0)
         // Keyed on moodEventID, not mood itself -- a second identical
-        // needsAttention (or celebrating/waving) occurrence arriving while
-        // the first's revert timer is still pending must restart the flash
-        // for its own full duration, not be silently ignored because
-        // SwiftUI's onChange dedupes on the mood *value*, which didn't
-        // change.
+        // celebrating/waving occurrence arriving while the first's revert
+        // timer is still pending must restart the flash for its own full
+        // duration, not be silently ignored because SwiftUI's onChange
+        // dedupes on the mood *value*, which didn't change.
         .onChange(of: state.moodEventID) { _, eventID in
             let newMood = state.mood
             let revertDelay: Double
             switch newMood {
             case .celebrating: revertDelay = 1.5
             case .waving: revertDelay = 1.8
-            // Just the flash's own duration -- if DockWalker also started a
-            // walk home for this, isHeadingHome keeps displayState reporting
-            // .walking (see CompanionState.displayState) well after mood
-            // reverts here, so the walk itself finishes on its own schedule.
-            case .needsAttention: revertDelay = 2.2
+            // needsAttention deliberately has no timer-based revert here --
+            // unlike celebrating/waving, there's a real external signal for
+            // when this one's actually over: the hook writes a new mood the
+            // moment anything happens next (you submit a prompt, a tool
+            // runs, the session stops), which already clears mood away from
+            // .needsAttention on its own. A fixed timeout would stop the
+            // flash after ~2s regardless of whether the prompt was actually
+            // answered, falling back to the plainer jump-for-attention
+            // animation while a real prompt is still sitting there unread --
+            // exactly the behavior this is meant to avoid.
             default: return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + revertDelay) {

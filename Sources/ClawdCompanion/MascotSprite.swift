@@ -8,6 +8,10 @@ import SwiftUI
 enum MascotSprite {
     static let cols = 13
     static let rows = 7
+    /// Row index of the arm/ear nubs (the one full-width row between the
+    /// narrower torso rows above and below it) -- shared with anything that
+    /// needs to visually attach to Clawd's arm, like the held hammer's grip.
+    static let armRow = 2
 
     enum Cell {
         case empty

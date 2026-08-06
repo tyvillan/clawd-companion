@@ -95,11 +95,16 @@ final class SessionCompanion {
             self?.onQuitRequested?()
         }
 
-        state.$mood
-            .removeDuplicates()
-            .sink { [weak self] mood in
+        // Keyed on moodEventID, not mood itself: two distinct occurrences of
+        // the same mood (e.g. a permission prompt notification followed by
+        // an idle-waiting-on-you one, both "needsAttention") must each fire
+        // their own alert -- deduplicating on the mood *value* (the previous
+        // approach) silently swallowed the second one.
+        state.$moodEventID
+            .dropFirst() // the initial seed emission at subscribe time, not a real event
+            .sink { [weak self] _ in
                 guard let self else { return }
-                switch mood {
+                switch self.state.mood {
                 case .celebrating:
                     self.alerter.fireCompletion()
                     guard self.settings.peekEnabled, self.state.isAnyAppFullScreen else { return }

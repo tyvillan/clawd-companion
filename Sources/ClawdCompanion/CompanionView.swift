@@ -137,7 +137,14 @@ struct CompanionView: View {
         // instead of past the window's own hard edge.
         .frame(width: totalSize.width, height: totalSize.height, alignment: .bottom)
         .opacity(state.isHovering ? 0.2 : 1.0)
-        .onChange(of: state.mood) { _, newMood in
+        // Keyed on moodEventID, not mood itself -- a second identical
+        // needsAttention (or celebrating/waving) occurrence arriving while
+        // the first's revert timer is still pending must restart the flash
+        // for its own full duration, not be silently ignored because
+        // SwiftUI's onChange dedupes on the mood *value*, which didn't
+        // change.
+        .onChange(of: state.moodEventID) { _, eventID in
+            let newMood = state.mood
             let revertDelay: Double
             switch newMood {
             case .celebrating: revertDelay = 1.5
@@ -150,7 +157,13 @@ struct CompanionView: View {
             default: return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + revertDelay) {
-                if state.mood == newMood { state.mood = .idle }
+                // Only the timer belonging to the latest event actually
+                // reverts -- a stale timer left over from an event that got
+                // superseded by a fresh occurrence of the same mood must not
+                // cut the newer one's display short.
+                if state.moodEventID == eventID, state.mood == newMood {
+                    state.mood = .idle
+                }
             }
         }
     }
@@ -281,6 +294,26 @@ struct CompanionView: View {
         return spriteSize(pixelSize: pixelSize).width * hammerGripFraction + reach
     }
 
+    /// Vertical nudge that lands the grip circle's center on the arm row's
+    /// own center, rather than the sprite's raw vertical midpoint. hammerOverlay
+    /// is laid out by the outer ZStack's default center alignment, then
+    /// bottom-anchors its own content within its (handleHeight+headHeight)-tall
+    /// box -- so before any offset, the grip circle's center sits at the
+    /// sprite's vertical center minus half the *difference* between the
+    /// sprite's height and the overlay's own height, plus half the circle's
+    /// own height. The previous flat `-spriteHeight * 0.08` nudge undershot
+    /// this by roughly two pixelSize units, which read as a hand-sized circle
+    /// floating below Clawd's arm instead of gripping it (confirmed by
+    /// measuring the grid's arm row against the overlay's un-offset position).
+    private static func hammerVerticalOffset(pixelSize: CGFloat) -> CGFloat {
+        let spriteHeight = spriteSize(pixelSize: pixelSize).height
+        let overlayHeight = pixelSize * (hammerHandleHeight + hammerHeadHeight)
+        let gripHeight = pixelSize * 1.3
+        let unoffsetGripCenterFromBottom = (spriteHeight - overlayHeight) / 2 + gripHeight / 2
+        let armRowCenterFromBottom = spriteHeight - (CGFloat(MascotSprite.armRow) + 0.5) * pixelSize
+        return unoffsetGripCenterFromBottom - armRowCenterFromBottom
+    }
+
     /// A held hammer, swinging on the tick/toggle beat -- shown in place of
     /// the alternating-leg gait for .active(.working), since a planted
     /// swinging stance reads as "building something" more than a walk cycle
@@ -310,7 +343,7 @@ struct CompanionView: View {
             .rotationEffect(.degrees(toggle ? Self.hammerStruckDegrees : Self.hammerRaisedDegrees), anchor: .bottom)
         }
         .frame(height: handleHeight + headHeight, alignment: .bottom)
-        .offset(x: spriteSize.width * Self.hammerGripFraction, y: -spriteSize.height * 0.08)
+        .offset(x: spriteSize.width * Self.hammerGripFraction, y: Self.hammerVerticalOffset(pixelSize: pixelSize))
     }
 
     // Swapped from the initial paper-white/line-blue to match a real

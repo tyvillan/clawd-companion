@@ -28,6 +28,19 @@ final class CompanionState: ObservableObject {
             }
         }
     }
+    /// Bumped by StateFileWatcher on every hook-driven state read, even one
+    /// that reports the same mood string as before -- e.g. a permission
+    /// prompt followed shortly by an idle-waiting-on-you notification both
+    /// write "needsAttention". Subscribers that only compare mood *values*
+    /// (Combine's removeDuplicates, SwiftUI's onChange) silently collapse
+    /// that second real occurrence into a no-op, which is what dropped the
+    /// sound/banner/walk-home and cut the flash's redisplay short. Anything
+    /// that needs to react to each distinct occurrence, not just each
+    /// distinct value, should key off this instead of mood directly.
+    @Published private(set) var moodEventID: Int = 0
+    func recordMoodEvent() {
+        moodEventID += 1
+    }
     /// True while Claude Code's permission mode is "plan" -- driven by the
     /// hook reading the common `permission_mode` field on every event, not
     /// tied to any specific tool, since plan mode spans many tool calls

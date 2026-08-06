@@ -54,10 +54,16 @@ final class DockWalker {
             }
             .store(in: &cancellables)
 
-        state.$mood
-            .removeDuplicates()
-            .sink { [weak self] mood in
-                if mood == .needsAttention { self?.handleNeedsAttention() }
+        // Keyed on moodEventID (see CompanionState) rather than mood's own
+        // value -- two needsAttention notifications in a row (a permission
+        // prompt, then an idle nudge) are two separate reasons to walk home,
+        // not one; removeDuplicates on mood collapsed the second into a
+        // no-op.
+        state.$moodEventID
+            .dropFirst()
+            .sink { [weak self] _ in
+                guard let self, self.state.mood == .needsAttention else { return }
+                self.handleNeedsAttention()
             }
             .store(in: &cancellables)
     }

@@ -93,6 +93,11 @@ final class StateFileWatcher {
                 self.state.targetApp = target
                 self.state.isPlanning = planning
                 self.state.mood = mood
+                // Recorded last, and unconditionally -- mood/targetApp/
+                // isPlanning are now consistent, so anything waiting on a
+                // distinct occurrence (see CompanionState.moodEventID) can
+                // safely read them the moment this fires.
+                self.state.recordMoodEvent()
             }
         }
     }

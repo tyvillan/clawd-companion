@@ -6,6 +6,9 @@ struct CompanionView: View {
     /// (see DockWalker.measuredTileSize) so Clawd scales with the user's
     /// actual Dock/display instead of a fixed constant.
     let pixelSize: CGFloat
+    /// This companion's body color -- the original orange for the first
+    /// session, a tint from SessionPalette for each concurrent one.
+    var bodyColor: Color = MascotSprite.bodyColor
 
     private static func spriteSize(pixelSize: CGFloat) -> CGSize {
         CGSize(width: CGFloat(MascotSprite.cols) * pixelSize, height: CGFloat(MascotSprite.rows) * pixelSize)
@@ -166,7 +169,7 @@ struct CompanionView: View {
                     }
                 }
             }
-            gc.fill(bodyPath, with: .color(MascotSprite.bodyColor))
+            gc.fill(bodyPath, with: .color(bodyColor))
         }
     }
 
@@ -219,7 +222,7 @@ struct CompanionView: View {
                     // applied (confirmed by live screenshot testing) -- this
                     // needs to read clearly as "Z", not just be present.
                     .font(.system(size: max(15, pixelSize * 4), weight: .bold, design: .rounded))
-                    .foregroundStyle(MascotSprite.bodyColor)
+                    .foregroundStyle(bodyColor)
                     .opacity(p.opacity)
                     .offset(x: p.dx, y: p.dy)
             }
@@ -292,7 +295,7 @@ struct CompanionView: View {
             // the thin eyelid bar leaves the cell's top/bottom untouched
             // (transparent), which reads as a faint gap rather than a
             // visibly shut eye.
-            gc.fill(Path(rect), with: .color(MascotSprite.bodyColor))
+            gc.fill(Path(rect), with: .color(bodyColor))
             let bar = CGRect(
                 x: rect.minX, y: rect.midY - rect.height * 0.12,
                 width: rect.width, height: rect.height * 0.24

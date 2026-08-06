@@ -22,6 +22,19 @@ final class HoverWatcher {
         timer = t
     }
 
+    /// The run loop retains the timer independently of this object, so a
+    /// released HoverWatcher would otherwise keep polling forever (harmless
+    /// but permanent). Companions are created and destroyed per session
+    /// now, so that leak would accumulate.
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    deinit {
+        stop()
+    }
+
     private func poll() {
         guard let panel else { return }
         let hovering = panel.frame.contains(NSEvent.mouseLocation)

@@ -9,11 +9,15 @@ import ApplicationServices
 // pattern as HoverWatcher) is the reliable fallback. Requires Accessibility;
 // silently reports false (never hides Clawd) if it isn't granted.
 final class FullScreenWatcher {
-    private let state: CompanionState
+    /// Fullscreen is machine-wide, not per-session, so this broadcasts to
+    /// every live companion rather than owning one state.
+    private let onChange: (Bool) -> Void
     private var timer: Timer?
 
-    init(state: CompanionState) {
-        self.state = state
+    private(set) var isFullScreen = false
+
+    init(onChange: @escaping (Bool) -> Void) {
+        self.onChange = onChange
         evaluate()
         let t = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.evaluate()
@@ -23,7 +27,10 @@ final class FullScreenWatcher {
     }
 
     private func evaluate() {
-        state.isAnyAppFullScreen = Self.frontmostAppIsFullScreen()
+        let value = Self.frontmostAppIsFullScreen()
+        guard value != isFullScreen else { return }
+        isFullScreen = value
+        onChange(value)
     }
 
     private static func frontmostAppIsFullScreen() -> Bool {

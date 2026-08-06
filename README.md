@@ -7,20 +7,23 @@ Clawd is a borderless, always-on-top `NSPanel` rendered with SwiftUI. A Claude C
 ## How he decides what to do
 
 ```
-Claude Code tool call
+Claude Code tool call  (session_id: abc123)
         │
         ▼
  ~/.claude/hooks/clawd-companion.sh   (PreToolUse / Stop / SessionStart hooks)
         │  writes
         ▼
- ~/.claude/creature/state.json        { "state": "typing", "target": "finder", "planning": false }
-        │  watched via kqueue
+ ~/.claude/creature/sessions/abc123.json
+   { "state": "typing", "target": "finder", "planning": false }
+        │  watched via kqueue (plus a 2s safety rescan)
         ▼
  CompanionState.displayState          walking | jumping | sleeping | active(mood)
         │
         ▼
  CompanionView + DockWalker           renders the sprite, animates position
 ```
+
+There's one file per session and the file's existence *is* that session's lifetime — see [Multiple sessions](#multiple-sessions).
 
 `displayState` is the single source of truth for what's on screen. Roughly:
 
@@ -112,6 +115,18 @@ When VS Code regains focus after being away, Clawd stops whatever he's doing and
 Hovering the mouse over him fades him to 20% opacity so he never blocks something you're trying to click in the Dock. He isn't draggable — his position is entirely driven by Dock state, not the mouse.
 
 ![Hover fade](docs/gifs/hover_fade.gif)
+
+## Multiple sessions
+
+Run more than one Claude Code session at a time and each gets its own Clawd, tinted so you can tell them apart at a glance. The first session keeps the original orange, so a single-session setup looks exactly as it always did.
+
+![Session color variants](docs/img/session_variants.png)
+
+- **Scoped to its own session.** Each companion reads only its own `sessions/<session_id>.json`, so a tool call in one session animates that Clawd and no other. Two sessions can be hammering and planning side by side, independently.
+- **Shoulder to shoulder.** Companions are offset horizontally by slot, so when several converge on the same Dock icon they line up instead of stacking.
+- **Spawn and despawn.** `SessionStart` writes the file (spawn); `SessionEnd` removes it (despawn). Slots and colors are recycled, so ending the blue session hands blue to the next one that starts rather than marching down the palette. The app quits itself once the last session is gone.
+
+Machine-wide things — VS Code focus, full-screen state, settings, the menu bar item — are shared and broadcast to every companion rather than tracked per session.
 
 ## Settings
 

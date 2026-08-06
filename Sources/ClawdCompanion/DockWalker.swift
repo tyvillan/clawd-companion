@@ -74,6 +74,18 @@ final class DockWalker {
         scheduleNextMove()
     }
 
+    /// Halts all movement permanently -- called when a session ends and its
+    /// companion is despawned. Without this the walk timer keeps firing
+    /// against a closed panel for the rest of the app's life, since Timer
+    /// holds its target until invalidated.
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+        cancellables.removeAll()
+        onPositionChange = nil
+        onFootToggle = nil
+    }
+
     private func refreshStops() {
         // Tier 1: precise, from the Dock's own icon geometry via Accessibility.
         // Note this deliberately does NOT use CGWindowListCopyWindowInfo's

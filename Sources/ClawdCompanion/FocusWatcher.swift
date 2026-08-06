@@ -9,21 +9,27 @@ final class FocusWatcher {
         "com.vscodium",
     ]
 
-    private let state: CompanionState
+    /// Focus is machine-wide, not per-session, so this broadcasts to every
+    /// live companion rather than owning one state.
+    private let onChange: (Bool) -> Void
     private var observer: NSObjectProtocol?
 
-    init(state: CompanionState) {
-        self.state = state
+    private(set) var isFocused: Bool
 
-        state.isVSCodeFocused = Self.isVSCode(NSWorkspace.shared.frontmostApplication)
+    init(onChange: @escaping (Bool) -> Void) {
+        self.onChange = onChange
+        isFocused = Self.isVSCode(NSWorkspace.shared.frontmostApplication)
+        onChange(isFocused)
 
         observer = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            guard let self else { return }
             let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            self?.state.isVSCodeFocused = Self.isVSCode(app)
+            self.isFocused = Self.isVSCode(app)
+            self.onChange(self.isFocused)
         }
     }
 

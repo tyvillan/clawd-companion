@@ -10,7 +10,9 @@ final class StatusItemController {
     private let alerter: CompletionAlerter
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
-    private weak var panel: NSPanel?
+    /// Resolved lazily on each click rather than captured once -- companions
+    /// come and go with sessions, so a stored panel list would go stale.
+    private var panelProvider: () -> [NSPanel] = { [] }
     private var eventMonitors: [Any] = []
 
     init(settings: Settings, alerter: CompletionAlerter) {
@@ -52,8 +54,8 @@ final class StatusItemController {
     /// the panel a real contextMenu: monitors observe without changing how
     /// the panel handles mouse events at all, so this can't regress
     /// click-through to the Dock icons underneath him.
-    func attachContextMenu(to panel: NSPanel) {
-        self.panel = panel
+    func attachContextMenu(panels: @escaping () -> [NSPanel]) {
+        panelProvider = panels
         // Local covers the case where the click is delivered to us; global
         // covers it being delivered to whatever is underneath. Only one of
         // the two fires for any given click.
@@ -66,12 +68,13 @@ final class StatusItemController {
         eventMonitors = [local, global].compactMap { $0 }
     }
 
-    /// Returns true if the click was over Clawd and the menu was shown.
+    /// Returns true if the click was over any live companion and the menu
+    /// was shown.
     @discardableResult
     private func showContextMenuIfOverClawd() -> Bool {
-        guard let panel, panel.alphaValue > 0 else { return false }
         let location = NSEvent.mouseLocation
-        guard panel.frame.contains(location) else { return false }
+        let hit = panelProvider().contains { $0.alphaValue > 0 && $0.frame.contains(location) }
+        guard hit else { return false }
         buildMenu().popUp(positioning: nil, at: location, in: nil)
         return true
     }

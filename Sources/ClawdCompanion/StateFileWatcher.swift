@@ -24,6 +24,18 @@ final class StateFileWatcher {
         readCurrentState()
     }
 
+    /// Tears down the kqueue source and its file descriptor. Needed now
+    /// that watchers come and go with sessions rather than living for the
+    /// whole process -- an uncancelled source leaks its fd.
+    func stop() {
+        source?.cancel()
+        source = nil
+    }
+
+    deinit {
+        stop()
+    }
+
     private func startWatching() {
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else { return }

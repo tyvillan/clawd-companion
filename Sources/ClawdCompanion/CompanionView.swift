@@ -64,7 +64,8 @@ struct CompanionView: View {
         let sprite = spriteSize(pixelSize: pixelSize)
         let jumpHeadroom = bounceAmplitude(pixelSize: pixelSize) * 1.15
         let sleepHeadroom = sleepZRise(pixelSize: pixelSize) + sleepZStartOffset + 40
-        let widthHeadroom = max(0, blueprintHalfExtent(pixelSize: pixelSize) * 2 - sprite.width) * 1.3
+        let propHalfExtent = max(blueprintHalfExtent(pixelSize: pixelSize), hammerHalfExtent(pixelSize: pixelSize))
+        let widthHeadroom = max(0, propHalfExtent * 2 - sprite.width) * 1.3
         return CGSize(
             width: sprite.width + widthHeadroom,
             height: sprite.height + max(jumpHeadroom, sleepHeadroom)
@@ -233,6 +234,31 @@ struct CompanionView: View {
 
     private static let hammerHandleColor = Color(red: 0.55, green: 0.36, blue: 0.2)
     private static let hammerHeadColor = Color(red: 0.58, green: 0.58, blue: 0.62)
+    private static let hammerHeadWidth: CGFloat = 2.2
+    private static let hammerHeadHeight: CGFloat = 1.1
+    private static let hammerHandleHeight: CGFloat = 2.6
+    /// Both extremes stay on the positive (clockwise) side of vertical --
+    /// the whole swing arcs up-and-out then down on the outboard side,
+    /// rather than the raised pose tipping back over his own body/face the
+    /// way a negative angle did.
+    private static let hammerRaisedDegrees = 75.0
+    private static let hammerStruckDegrees = 15.0
+    /// Fraction of the sprite's width the grip point sits out from center --
+    /// lines up with the arm/ear nub's own tip (which spans the sprite's
+    /// full width), so the hand reads as attached to the arm rather than
+    /// floating past it.
+    private static let hammerGripFraction: CGFloat = 0.46
+
+    /// Half-width, from the sprite's own horizontal center, that the
+    /// hammer's raised pose reaches on its offset side -- same purpose as
+    /// blueprintHalfExtent, sized from the wider (raised) angle since that's
+    /// the pose that reaches furthest out.
+    private static func hammerHalfExtent(pixelSize: CGFloat) -> CGFloat {
+        let totalHeight = pixelSize * (hammerHeadHeight + hammerHandleHeight)
+        let angle = hammerRaisedDegrees * .pi / 180
+        let reach = totalHeight * sin(angle) + (pixelSize * hammerHeadWidth / 2) * cos(angle)
+        return spriteSize(pixelSize: pixelSize).width * hammerGripFraction + reach
+    }
 
     /// A held hammer, swinging on the tick/toggle beat -- shown in place of
     /// the alternating-leg gait for .active(.working), since a planted
@@ -240,19 +266,30 @@ struct CompanionView: View {
     /// would. Built from plain rects sized to pixelSize (not new grid art)
     /// so it reads as the same blocky pixel-art language as the sprite.
     private func hammerOverlay(toggle: Bool) -> some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(Self.hammerHeadColor)
-                .frame(width: pixelSize * 2.2, height: pixelSize * 1.1)
-            Rectangle()
-                .fill(Self.hammerHandleColor)
-                .frame(width: pixelSize * 0.5, height: pixelSize * 2.6)
+        let handleHeight = pixelSize * Self.hammerHandleHeight
+        let headHeight = pixelSize * Self.hammerHeadHeight
+
+        return ZStack(alignment: .bottom) {
+            // A fixed grip mark at the pivot, in the sprite's own body color
+            // -- stays put while the hammer swings around it, so it reads as
+            // his hand holding the handle rather than the hammer floating
+            // disconnected next to him.
+            Circle()
+                .fill(bodyColor)
+                .frame(width: pixelSize * 1.3, height: pixelSize * 1.3)
+
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Self.hammerHeadColor)
+                    .frame(width: pixelSize * Self.hammerHeadWidth, height: headHeight)
+                Rectangle()
+                    .fill(Self.hammerHandleColor)
+                    .frame(width: pixelSize * 0.5, height: handleHeight)
+            }
+            .rotationEffect(.degrees(toggle ? Self.hammerStruckDegrees : Self.hammerRaisedDegrees), anchor: .bottom)
         }
-        // Raised back on the "up" beat, struck down past vertical on the
-        // "down" beat -- anchored at the bottom so it pivots like a swing
-        // rather than sliding.
-        .rotationEffect(.degrees(toggle ? 20 : -50), anchor: .bottom)
-        .offset(x: spriteSize.width * 0.36, y: spriteSize.height * 0.08)
+        .frame(height: handleHeight + headHeight, alignment: .bottom)
+        .offset(x: spriteSize.width * Self.hammerGripFraction, y: -spriteSize.height * 0.08)
     }
 
     // Swapped from the initial paper-white/line-blue to match a real

@@ -187,5 +187,5 @@ Locally-built apps aren't quarantined, so this has no Gatekeeper prompt at all. 
 ### Then, either way
 
 1. Grant Accessibility permission when prompted (needed to read Dock icon positions and walk to them precisely).
-2. Wire up the hooks in `~/.claude/settings.json` to call `~/.claude/hooks/clawd-companion.sh` on `SessionStart`, `PreToolUse`, and `Stop`.
+2. Copy this repo's `hooks/clawd-companion.sh` to `~/.claude/hooks/clawd-companion.sh` (`mkdir -p ~/.claude/hooks && cp hooks/clawd-companion.sh ~/.claude/hooks/ && chmod +x ~/.claude/hooks/clawd-companion.sh`), then wire it up in `~/.claude/settings.json` to fire on `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `Stop`, and `Notification`. It's a plain copy, not a symlink, deliberately — a hook that runs on every tool call shouldn't depend on this iCloud-synced repo being reachable at that instant (see the iCloud caveat in the parent `Projects/CLAUDE.md`). If you edit the hook, copy it over again afterward.
 3. Launch the app — `open ClawdCompanion.app` (or `open build/ClawdCompanion.app` if you built it).

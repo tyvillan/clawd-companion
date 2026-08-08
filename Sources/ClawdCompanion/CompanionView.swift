@@ -327,6 +327,15 @@ struct CompanionView: View {
         let handleHeight = pixelSize * Self.hammerHandleHeight
         let headHeight = pixelSize * Self.hammerHeadHeight
 
+        // The blueprint prop (see blueprintOverlay) is held on the sprite's
+        // right side. When plan mode is also active, the hammer moves to the
+        // left hand and mirrors its whole swing arc -- otherwise both props
+        // render on the same side and read as one hand holding both at once.
+        let mirrored = state.isPlanning
+        let sideSign: CGFloat = mirrored ? -1 : 1
+        let raisedDegrees = mirrored ? -Self.hammerRaisedDegrees : Self.hammerRaisedDegrees
+        let struckDegrees = mirrored ? -Self.hammerStruckDegrees : Self.hammerStruckDegrees
+
         return ZStack(alignment: .bottom) {
             // A fixed grip mark at the pivot, in the sprite's own body color
             // -- stays put while the hammer swings around it, so it reads as
@@ -344,10 +353,10 @@ struct CompanionView: View {
                     .fill(Self.hammerHandleColor)
                     .frame(width: pixelSize * 0.5, height: handleHeight)
             }
-            .rotationEffect(.degrees(toggle ? Self.hammerStruckDegrees : Self.hammerRaisedDegrees), anchor: .bottom)
+            .rotationEffect(.degrees(toggle ? struckDegrees : raisedDegrees), anchor: .bottom)
         }
         .frame(height: handleHeight + headHeight, alignment: .bottom)
-        .offset(x: spriteSize.width * Self.hammerGripFraction, y: Self.hammerVerticalOffset(pixelSize: pixelSize))
+        .offset(x: sideSign * spriteSize.width * Self.hammerGripFraction, y: Self.hammerVerticalOffset(pixelSize: pixelSize))
     }
 
     // Swapped from the initial paper-white/line-blue to match a real

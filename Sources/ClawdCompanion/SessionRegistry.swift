@@ -110,6 +110,19 @@ final class SessionRegistry {
     /// than guessed at -- only a *confirmed* dead process (kill(pid, 0)
     /// failing with ESRCH specifically) gets pruned, so a transient read
     /// hiccup can't despawn someone's actual live companion.
+    ///
+    /// `kill(pid, 0)` succeeding is *not* by itself proof the original
+    /// session is still alive -- macOS recycles pid numbers, so a marker
+    /// file surviving long enough (observed: four days) can have its
+    /// recorded pid reassigned to a completely unrelated later process,
+    /// which makes the liveness probe come back "alive" forever and leaves
+    /// a duplicate/phantom companion on screen indefinitely (the bug this
+    /// guards against). So a pid that answers to signal 0 gets one more
+    /// check: `processName(pid:)` reads that pid's actual `comm` name via
+    /// `sysctl(KERN_PROC_PID)` and confirms it still looks like a `claude`
+    /// process. A pid that exists but is now some other program is exactly
+    /// the recycled-pid case, so it's treated the same as a confirmed-dead
+    /// pid rather than trusted.
     private static func partitionByLiveness(
         _ ids: Set<String>, directory: String
     ) -> (alive: Set<String>, orphaned: Set<String>) {
@@ -123,12 +136,40 @@ final class SessionRegistry {
                 alive.insert(id)
                 continue
             }
-            if kill(pid_t(pid), 0) == -1 && errno == ESRCH {
+            let signalOK = kill(pid_t(pid), 0) == 0 || errno != ESRCH
+            if signalOK, let name = processName(pid: pid_t(pid)), !name.lowercased().contains("claude") {
                 orphaned.insert(id)
-            } else {
+            } else if signalOK {
                 alive.insert(id)
+            } else {
+                orphaned.insert(id)
             }
         }
         return (alive, orphaned)
+    }
+
+    /// Looks up a running process's short name (`kinfo_proc.kp_proc.p_comm`,
+    /// the same "comm" name `ps -o comm=` reports) via `sysctl(3)`, without
+    /// spawning `ps` per session on every 2s rescan. Returns `nil` if the
+    /// pid doesn't resolve to a live process (already covered by the
+    /// `kill(pid, 0)` check above, but sysctl can independently come back
+    /// empty right as a process exits) or the sysctl call itself fails --
+    /// callers treat `nil` the same as "couldn't confirm," not as "confirmed
+    /// not claude," so a transient lookup hiccup can't despawn a real
+    /// session either.
+    private static func processName(pid: pid_t) -> String? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        let result = withUnsafeMutablePointer(to: &info) { ptr -> Int32 in
+            sysctl(&mib, u_int(mib.count), ptr, &size, nil, 0)
+        }
+        guard result == 0, size > 0 else { return nil }
+        let comm = withUnsafeBytes(of: info.kp_proc.p_comm) { raw -> String in
+            let bytes = raw.bindMemory(to: UInt8.self)
+            let nulIndex = bytes.firstIndex(of: 0) ?? bytes.count
+            return String(decoding: bytes[..<nulIndex], as: UTF8.self)
+        }
+        return comm.isEmpty ? nil : comm
     }
 }

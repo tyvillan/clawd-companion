@@ -16,6 +16,10 @@ final class SessionRegistry {
     private var safetyTimer: Timer?
     private var known: Set<String> = []
 
+    /// How long a session file with no readable "pid" is still given the
+    /// benefit of the doubt before being pruned -- see partitionByLiveness.
+    private static let missingPIDGracePeriod: TimeInterval = 30
+
     /// Called on the main queue whenever the live set changes, with the ids
     /// that appeared and the ids that went away.
     var onChange: ((_ added: [String], _ removed: [String]) -> Void)?
@@ -106,10 +110,15 @@ final class SessionRegistry {
     /// used to trust.
     ///
     /// A file with no readable "pid" (an older hook version, or a read
-    /// racing the hook's own write-then-rename) is left in `alive` rather
-    /// than guessed at -- only a *confirmed* dead process (kill(pid, 0)
-    /// failing with ESRCH specifically) gets pruned, so a transient read
-    /// hiccup can't despawn someone's actual live companion.
+    /// racing the hook's own write-then-rename) is left in `alive` for the
+    /// first `missingPIDGracePeriod` seconds after its own last write, so a
+    /// transient read hiccup can't despawn someone's actual live companion.
+    /// Past that grace period it's treated as orphaned instead of trusted
+    /// forever -- the write-then-rename race this tolerates resolves within
+    /// milliseconds, so a file still unreadable/pid-less well after that is
+    /// a genuinely stale marker (observed: a pre-pid-field hook version's
+    /// leftover file, still "alive" four days later with nothing able to
+    /// prune it) rather than one caught mid-write.
     ///
     /// `kill(pid, 0)` succeeding is *not* by itself proof the original
     /// session is still alive -- macOS recycles pid numbers, so a marker
@@ -129,11 +138,19 @@ final class SessionRegistry {
         var alive = Set<String>()
         var orphaned = Set<String>()
         for id in ids {
-            guard let data = FileManager.default.contents(atPath: statePath(directory: directory, sessionID: id)),
+            let path = statePath(directory: directory, sessionID: id)
+            guard let data = FileManager.default.contents(atPath: path),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let pid = obj["pid"] as? Int, pid > 0
             else {
-                alive.insert(id)
+                let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+                let mtime = attrs?[.modificationDate] as? Date
+                let age = mtime.map { Date().timeIntervalSince($0) } ?? 0
+                if age > missingPIDGracePeriod {
+                    orphaned.insert(id)
+                } else {
+                    alive.insert(id)
+                }
                 continue
             }
             let signalOK = kill(pid_t(pid), 0) == 0 || errno != ESRCH

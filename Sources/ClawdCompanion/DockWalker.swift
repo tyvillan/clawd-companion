@@ -106,6 +106,14 @@ final class DockWalker {
         // window as covering the *entire screen* (a compositor/Stage
         // Manager artifact), not the visible icon bar, so it's useless for
         // positioning and would put the sprite at the top of the screen.
+        // AX has been observed occasionally reporting an icon rect well past
+        // the screen's own bounds -- a transient/stale read (seen right after
+        // a relaunch, presumably before the Dock's AX tree is fully settled)
+        // rather than a real Dock state. Trusting it put the companion's
+        // whole window below the visible screen, clipped to a sliver of feet
+        // at the very bottom edge. A candidate topY outside the screen is
+        // exactly that case, so it's rejected in favor of falling through to
+        // Tier 2 rather than anchoring to it.
         if AXIsProcessTrusted(), let icons = Self.dockIconGeometry(), !icons.isEmpty {
             // AXPositionAttribute is in Quartz's global display space, whose
             // origin is always the *primary* display's top-left -- not
@@ -114,14 +122,17 @@ final class DockWalker {
             // whenever focus is on a secondary display.
             let primaryHeight = NSScreen.screens.first?.frame.height ?? 900
             let quartzTop = icons.map(\.quartzY).min() ?? 0
-            topY = primaryHeight - quartzTop - Self.verticalSeatOffset
-            stops = icons.map(\.centerX)
-            measuredTileSize = icons.map(\.size).reduce(0, +) / CGFloat(icons.count)
-            iconsByTitle = [:]
-            for icon in icons where icon.title != nil {
-                iconsByTitle[icon.title!] = icon
+            let candidateTopY = primaryHeight - quartzTop - Self.verticalSeatOffset
+            if candidateTopY >= 0, candidateTopY <= primaryHeight {
+                topY = candidateTopY
+                stops = icons.map(\.centerX)
+                measuredTileSize = icons.map(\.size).reduce(0, +) / CGFloat(icons.count)
+                iconsByTitle = [:]
+                for icon in icons where icon.title != nil {
+                    iconsByTitle[icon.title!] = icon
+                }
+                return
             }
-            return
         }
 
         // Tier 2: no Accessibility -- estimate from the Dock's own size

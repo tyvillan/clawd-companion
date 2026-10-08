@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Claude Code hook dispatcher for the Clawd desktop companion. Registered on
-# SessionStart/SessionEnd/UserPromptSubmit/PreToolUse/Stop/Notification.
+# SessionStart/SessionEnd/UserPromptSubmit/PreToolUse/Stop/Notification/
+# SubagentStart/SubagentStop.
 # Launches/quits the companion app based on how many Claude Code sessions are
 # currently open —
 # tracked as one marker file per session_id (not a raw counter), so a
@@ -30,6 +31,7 @@ PARSED="$(printf '%s' "$PAYLOAD" | node -e '
     console.log(p.tool_name || "");
     console.log(p.permission_mode || "");
     console.log(p.notification_type || "");
+    console.log(p.agent_id || "");
   });
 ' 2>>"$LOG_FILE")"
 
@@ -38,6 +40,7 @@ SESSION_ID="$(printf '%s\n' "$PARSED" | sed -n '2p')"
 TOOL_NAME="$(printf '%s\n' "$PARSED" | sed -n '3p')"
 PERMISSION_MODE="$(printf '%s\n' "$PARSED" | sed -n '4p')"
 NOTIFICATION_TYPE="$(printf '%s\n' "$PARSED" | sed -n '5p')"
+AGENT_ID="$(printf '%s\n' "$PARSED" | sed -n '6p')"
 [ -z "$SESSION_ID" ] && SESSION_ID="unknown"
 
 # The hook script's own parent process is the actual long-lived `claude` CLI
@@ -56,9 +59,23 @@ SESSION_PID="$PPID"
 PLANNING="false"
 [ "$PERMISSION_MODE" = "plan" ] && PLANNING="true"
 
+# Subagents currently running for this session, tracked as one marker file
+# per agent_id (written on SubagentStart, removed on SubagentStop) for the
+# same drift-proofing reason sessions are. Markers older than two hours are
+# pruned on every count, so an agent that was killed without a SubagentStop
+# can't leave the orbiting helpers spinning forever.
+AGENTS_DIR="$CREATURE_DIR/agents/$SESSION_ID"
+count_agents() {
+  [ -d "$AGENTS_DIR" ] || { echo 0; return; }
+  find "$AGENTS_DIR" -type f -mmin +120 -delete 2>/dev/null || true
+  find "$AGENTS_DIR" -type f 2>/dev/null | wc -l | tr -d ' '
+}
+AGENT_COUNT="$(count_agents)"
+
 # Maps a tool name to the mood it should show while that tool runs.
 mood_for_tool() {
   case "$1" in
+    Artifact) echo "creating" ;;
     Edit|Write|NotebookEdit) echo "typing" ;;
     Read|Grep|Glob|WebFetch|WebSearch) echo "inspecting" ;;
     *) echo "working" ;;
@@ -87,8 +104,28 @@ target_for_tool() {
 # malformed JSON and dropped.
 write_state() {
   local tmp="$SESSIONS_DIR/.$SESSION_ID.tmp"
-  printf '{"state":"%s","target":"%s","planning":%s,"pid":%s}' "$1" "${2:-}" "$PLANNING" "$SESSION_PID" > "$tmp"
+  printf '{"state":"%s","target":"%s","planning":%s,"agents":%s,"pid":%s}' "$1" "${2:-}" "$PLANNING" "$AGENT_COUNT" "$SESSION_PID" > "$tmp"
   mv -f "$tmp" "$SESSIONS_DIR/$SESSION_ID.json"
+}
+
+# Rewrites the state file after the agent count changed, keeping whatever
+# the session was already doing. Every write bumps the app's mood event, and
+# celebrating/needsAttention/waving trigger alerts or a re-flash, so those
+# are never replayed from here -- they become "delegating" (or idle once the
+# last agent is gone) instead.
+refresh_for_agent_change() {
+  local file="$SESSIONS_DIR/$SESSION_ID.json" cur="idle" tgt=""
+  if [ -f "$file" ]; then
+    cur="$(sed -n 's/.*"state":"\([^"]*\)".*/\1/p' "$file")"
+    tgt="$(sed -n 's/.*"target":"\([^"]*\)".*/\1/p' "$file")"
+  fi
+  case "$cur" in
+    celebrating|needsAttention|waving|idle|delegating|"")
+      if [ "$AGENT_COUNT" -gt 0 ]; then cur="delegating"; else cur="idle"; fi
+      tgt=""
+      ;;
+  esac
+  write_state "$cur" "$tgt"
 }
 
 launch_app_if_needed() {
@@ -102,6 +139,8 @@ case "$EVENT" in
     # Creating the file is what spawns this session's companion; "waving"
     # gives it a hello animation, which the app auto-reverts to idle a
     # couple of seconds after rendering.
+    rm -rf "$AGENTS_DIR"
+    AGENT_COUNT=0
     write_state "waving"
     ;;
   SessionEnd)
@@ -109,6 +148,22 @@ case "$EVENT" in
     # quits itself once the last one is gone, so there's no separate
     # "everyone out" signal to send.
     rm -f "$SESSIONS_DIR/$SESSION_ID.json" "$SESSIONS_DIR/.$SESSION_ID.tmp"
+    rm -rf "$AGENTS_DIR"
+    ;;
+  SubagentStart)
+    if [ -n "$AGENT_ID" ]; then
+      mkdir -p "$AGENTS_DIR"
+      : > "$AGENTS_DIR/${AGENT_ID//[^A-Za-z0-9_-]/_}"
+      AGENT_COUNT="$(count_agents)"
+    fi
+    refresh_for_agent_change
+    ;;
+  SubagentStop)
+    if [ -n "$AGENT_ID" ]; then
+      rm -f "$AGENTS_DIR/${AGENT_ID//[^A-Za-z0-9_-]/_}"
+      AGENT_COUNT="$(count_agents)"
+    fi
+    refresh_for_agent_change
     ;;
   UserPromptSubmit)
     write_state "thinking"
@@ -128,7 +183,15 @@ case "$EVENT" in
     fi
     ;;
   Stop)
-    write_state "celebrating"
+    # The main turn ended, but subagents (typically background ones) may
+    # still be running -- Claude isn't actually done, so no completion
+    # alert yet. The turn that follows once they report back ends with its
+    # own Stop, which celebrates.
+    if [ "$AGENT_COUNT" -gt 0 ]; then
+      write_state "delegating"
+    else
+      write_state "celebrating"
+    fi
     ;;
   Notification)
     # Fires for a permission prompt, an idle-waiting-on-you prompt, and a

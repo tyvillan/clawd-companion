@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 enum CompanionMood: String, Codable {
-    case idle, thinking, typing, inspecting, working, celebrating, waving, needsAttention, quit
+    case idle, thinking, typing, inspecting, working, celebrating, waving, needsAttention, delegating, creating, quit
 }
 
 /// Which dock app the current Claude Code activity relates to, driving
@@ -48,6 +48,10 @@ final class CompanionState: ObservableObject {
     /// CompanionView's blueprint prop) layered on top of whatever
     /// mood/displayState is already happening, not a mood of its own.
     @Published var isPlanning: Bool = false
+    /// Subagents currently running for this session, as counted by the hook.
+    /// Like isPlanning, a visual overlay (orbiting mini Clawds) on top of
+    /// whatever mood is animating, not a mood of its own.
+    @Published var agentCount: Int = 0
     @Published var isVSCodeFocused: Bool = true {
         didSet {
             guard isVSCodeFocused != oldValue else { return }

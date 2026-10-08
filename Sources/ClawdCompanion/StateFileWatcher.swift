@@ -78,6 +78,7 @@ final class StateFileWatcher {
         let rawTarget = obj["target"] as? String
         let target = rawTarget.flatMap { TargetApp(rawValue: $0) }
         let planning = obj["planning"] as? Bool ?? false
+        let agents = obj["agents"] as? Int ?? 0
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -92,6 +93,7 @@ final class StateFileWatcher {
                 // update and should already agree by the time mood fires.
                 self.state.targetApp = target
                 self.state.isPlanning = planning
+                self.state.agentCount = agents
                 self.state.mood = mood
                 // Recorded last, and unconditionally -- mood/targetApp/
                 // isPlanning are now consistent, so anything waiting on a

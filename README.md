@@ -14,7 +14,7 @@ Claude Code tool call  (session_id: abc123)
         │  writes
         ▼
  ~/.claude/creature/sessions/abc123.json
-   { "state": "typing", "target": "finder", "planning": false }
+   { "state": "typing", "target": "finder", "planning": false, "agents": 0 }
         │  watched via kqueue (plus a 2s safety rescan)
         ▼
  CompanionState.displayState          walking | jumping | sleeping | active(mood)
@@ -32,6 +32,8 @@ There's one file per session and the file's existence *is* that session's lifeti
 - **Idle + mid-transit** (walking to a target, walking home, or idly wandering) → keep walking until he actually arrives. Sleep never interrupts a walk in progress.
 - **Idle + arrived + been idle 45s+** → sleeping.
 - Otherwise → idle wander around the Dock.
+- **Subagents**: while any subagent is running (counted from `SubagentStart`/`SubagentStop` hooks), tiny Clawds circle above him, one per agent (max 4), layered on whatever else he's doing. If the main turn ends while agents are still running, the "Finished responding" alert is held back (he stays in a `delegating` pose) until the follow-up turn finishes.
+- **Creating an artifact**: the `Artifact` tool shows him painting strokes onto a small canvas with a brush.
 - **Plan mode**: whenever Claude Code's permission mode is `"plan"`, a held blueprint is layered on top of whatever's already showing — independent of the rules above, since plan mode can span many tool calls and moods.
 - **Needs your input**: a permission prompt (or Claude idle waiting on you) flashes him white and walks him back to the VS Code icon, regardless of focus — this is the one case that overrides an in-progress walk rather than waiting for it to finish.
 

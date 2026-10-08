@@ -76,7 +76,14 @@ struct CompanionView: View {
     private var bounceAmplitude: CGFloat { Self.bounceAmplitude(pixelSize: pixelSize) }
     private var totalSize: CGSize { Self.windowSize(pixelSize: pixelSize) }
 
+    /// Orbiting helpers move on wall-clock time, so whenever any are on screen
+    /// the view has to redraw fast enough for that to look smooth, whatever
+    /// the current mood's own (often much slower) beat is.
     private var tickInterval: Double {
+        state.agentCount > 0 ? min(moodTickInterval, 0.1) : moodTickInterval
+    }
+
+    private var moodTickInterval: Double {
         // A named-target walk, or walking home after a VS Code refocus,
         // always paces the legs regardless of which mood is animating in
         // place -- it reads as "hustling over there."
@@ -92,6 +99,9 @@ struct CompanionView: View {
         case .active(.waving): return 0.3
         // Fast enough to read as an urgent flash rather than a fade.
         case .active(.needsAttention): return 0.1
+        case .active(.delegating): return 0.1
+        // Brush-stroke beat -- quicker than the hammer, slower than typing.
+        case .active(.creating): return 0.25
         case .jumping: return 0.35
         // Faster than the other in-place moods despite sleeping being the
         // "calmest" one -- the floating Z's and breathing motion need a
@@ -125,8 +135,16 @@ struct CompanionView: View {
                     hammerOverlay(toggle: toggle)
                 }
 
+                if state.displayState == .active(.creating) {
+                    canvasOverlay(tick: tick, toggle: toggle)
+                }
+
                 if state.isPlanning {
                     blueprintOverlay()
+                }
+
+                if state.agentCount > 0 {
+                    agentOrbitOverlay(date: context.date)
                 }
             }
         }
@@ -390,6 +408,93 @@ struct CompanionView: View {
         .offset(x: spriteSize.width * 0.34, y: spriteSize.height * 0.12)
     }
 
+    private static let canvasPaperColor = Color(red: 0.97, green: 0.95, blue: 0.9)
+    private static let canvasFrameColor = Color(red: 0.55, green: 0.36, blue: 0.2)
+    private static let canvasPaints = [
+        Color(red: 0.9, green: 0.3, blue: 0.3),
+        Color(red: 0.95, green: 0.75, blue: 0.2),
+        Color(red: 0.3, green: 0.6, blue: 0.9),
+    ]
+
+    /// A small painting canvas that fills in one colored stroke at a time
+    /// while Claude Code is creating an artifact, with a brush dabbing at
+    /// it. Held on the right like the blueprint, or the left when plan mode
+    /// already has the blueprint there -- same sharing rule as the hammer.
+    private func canvasOverlay(tick: Int, toggle: Bool) -> some View {
+        let size = Self.blueprintSize(pixelSize: pixelSize)
+        let sideSign: CGFloat = state.isPlanning ? -1 : 1
+        let painted = tick % (Self.canvasPaints.count + 1) // 0...3 strokes
+        let paintColor = Self.canvasPaints[min(painted, Self.canvasPaints.count - 1)]
+
+        return ZStack {
+            VStack(spacing: pixelSize * 0.55) {
+                ForEach(0..<Self.canvasPaints.count, id: \.self) { i in
+                    Rectangle()
+                        .fill(i < painted ? Self.canvasPaints[i] : Color.clear)
+                        .frame(width: pixelSize * 3.4, height: pixelSize * 0.55)
+                }
+            }
+            .padding(pixelSize * 0.75)
+            .background(Self.canvasPaperColor)
+            .border(Self.canvasFrameColor, width: pixelSize * 0.35)
+            .frame(width: size, height: size)
+
+            VStack(spacing: 0) {
+                Rectangle().fill(paintColor).frame(width: pixelSize * 0.7, height: pixelSize * 0.8)
+                Rectangle().fill(Self.hammerHandleColor).frame(width: pixelSize * 0.45, height: pixelSize * 2.2)
+            }
+            .rotationEffect(.degrees(toggle ? 25 : 40), anchor: .bottom)
+            .offset(x: pixelSize * 0.6, y: -size * 0.45)
+        }
+        .offset(x: sideSign * spriteSize.width * 0.34, y: spriteSize.height * 0.12)
+    }
+
+    private static let orbitMaxShown = 4
+    private static let orbitCycle: Double = 2.4
+
+    /// One tiny Clawd per running subagent (capped), circling in a flat
+    /// halo above the real one. Kept inside the sprite's own width and the
+    /// window's existing headroom above it, so it needs no extra window
+    /// padding.
+    private func agentOrbitOverlay(date: Date) -> some View {
+        let shown = min(state.agentCount, Self.orbitMaxShown)
+        let t = date.timeIntervalSinceReferenceDate
+        let h = spriteSize.height
+        let rx = spriteSize.width * 0.5
+        let ry = h * 0.12
+        let centerY = -(h * 0.5 + h * 0.3 + ry)
+
+        return ZStack {
+            ForEach(0..<shown, id: \.self) { i in
+                let angle = t * 2 * .pi / Self.orbitCycle + Double(i) * 2 * .pi / Double(shown)
+                // Little hop on the beat so they read as busy, not sliding.
+                let bob = abs(sin(angle * 2)) * pixelSize * 0.5
+                miniClawd()
+                    .offset(x: CGFloat(cos(angle)) * rx, y: centerY + CGFloat(sin(angle)) * ry - bob)
+            }
+        }
+    }
+
+    private func miniClawd() -> some View {
+        let p = pixelSize
+        return VStack(spacing: 0) {
+            Rectangle()
+                .fill(bodyColor)
+                .frame(width: p * 3, height: p * 2)
+                .overlay(
+                    HStack(spacing: p * 0.8) {
+                        Rectangle().fill(MascotSprite.eyeColor).frame(width: p * 0.5, height: p * 0.6)
+                        Rectangle().fill(MascotSprite.eyeColor).frame(width: p * 0.5, height: p * 0.6)
+                    }
+                    .offset(y: -p * 0.1)
+                )
+            HStack(spacing: p * 0.8) {
+                Rectangle().fill(bodyColor).frame(width: p * 0.5, height: p * 0.6)
+                Rectangle().fill(bodyColor).frame(width: p * 0.5, height: p * 0.6)
+            }
+        }
+    }
+
     private func drawEye(_ gc: GraphicsContext, in rect: CGRect, style: MascotSprite.EyeStyle, bodyColor: Color) {
         switch style {
         case .open:
@@ -442,6 +547,10 @@ struct CompanionView: View {
             return .closed
         case .active(.inspecting):
             return toggle ? .lookLeft : .lookRight
+        // Watching the helpers circle overhead -- ticks at 0.1s, so glance
+        // on a slower beat than inspecting's every-tick flip.
+        case .active(.delegating):
+            return (tick / 6) % 2 == 0 ? .lookLeft : .lookRight
         case .walking where state.isWandering:
             // Actually mid-stride -- a brief blink every so often, otherwise
             // a static stare into the direction of travel.
@@ -465,7 +574,7 @@ struct CompanionView: View {
         switch state.displayState {
         case .active(.celebrating), .jumping:
             return toggle ? -bounceAmplitude : 0
-        case .active(.working):
+        case .active(.working), .active(.creating):
             // A small downward dip synced to the hammer's strike beat --
             // reads as the impact, not a hop.
             return toggle ? bounceAmplitude * 0.08 : 0

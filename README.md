@@ -39,7 +39,7 @@ There's one file per session and the file's existence *is* that session's lifeti
 
 ## Stages & animations
 
-Every GIF below is a real capture of the running app.
+Every GIF below is a real capture of the running app, except Building, Creating, and Delegating, which are rendered frame-by-frame from the real `CompanionView` by `tools/render_gifs.sh`.
 
 ### Idle wander
 
@@ -55,9 +55,21 @@ Between tool calls, Clawd ambles between random Dock icons. Standing still betwe
 
 ### Building
 
-`Bash` and other tool calls that don't fit a more specific mood plant him in a stance swinging a hammer on a strike beat — reads as "making something happen" rather than typing.
+`Bash` and other tool calls that don't fit a more specific mood plant him in place with a hammer in his right hand, swinging from raised to struck on a beat with a small dip on each strike — reads as "making something happen" rather than typing. While plan mode is also active, the hammer switches to his left hand so it doesn't collide with the blueprint.
 
 ![Building](docs/gifs/hammer.gif)
+
+### Creating an artifact
+
+While the `Artifact` tool runs, Clawd holds a small canvas and dabs at it with a brush, adding one colored stroke at a time. Like the hammer, it swaps to his left hand if plan mode already has the blueprint in his right.
+
+![Creating](docs/gifs/canvas.gif)
+
+### Delegating (agents running)
+
+Each running subagent — counted from the `SubagentStart`/`SubagentStop` hooks — appears as a tiny Clawd circling above him (up to four shown), layered on top of whatever else he's doing. If the main turn ends while agents are still running, he stays in this pose and the "Finished responding" alert is held until everything is actually done.
+
+![Delegating](docs/gifs/agents.gif)
 
 ### Thinking
 

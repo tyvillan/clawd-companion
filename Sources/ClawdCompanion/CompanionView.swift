@@ -112,9 +112,18 @@ struct CompanionView: View {
         }
     }
 
+    /// When set, renders exactly this instant instead of running live, so
+    /// tools/render_gifs.sh can capture deterministic frames offscreen.
+    /// Always nil inside the app itself.
+    var fixedDate: Date? = nil
+
+    /// Exposed so the capture tool can step by the same beat the live view uses.
+    var captureTickInterval: Double { tickInterval }
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: tickInterval)) { context in
-            let tick = Int(context.date.timeIntervalSinceReferenceDate / tickInterval)
+            let now = fixedDate ?? context.date
+            let tick = Int(now.timeIntervalSinceReferenceDate / tickInterval)
             let toggle = tick % 2 == 0
 
             ZStack {
@@ -123,12 +132,12 @@ struct CompanionView: View {
                     eyeStyle: eyeStyle(tick: tick, toggle: toggle),
                     bodyColor: displayColor(toggle: toggle)
                 )
-                    .offset(y: bounceOffset(toggle: toggle, date: context.date))
+                    .offset(y: bounceOffset(toggle: toggle, date: now))
                     .rotationEffect(.degrees(leanDegrees(toggle: toggle)))
                     .scaleEffect(pulseScale(toggle: toggle))
 
                 if state.displayState == .sleeping {
-                    sleepZOverlay(date: context.date)
+                    sleepZOverlay(date: now)
                 }
 
                 if state.displayState == .active(.working) {
@@ -144,7 +153,7 @@ struct CompanionView: View {
                 }
 
                 if state.agentCount > 0 {
-                    agentOrbitOverlay(date: context.date)
+                    agentOrbitOverlay(date: now)
                 }
             }
         }
@@ -439,12 +448,14 @@ struct CompanionView: View {
             .border(Self.canvasFrameColor, width: pixelSize * 0.35)
             .frame(width: size, height: size)
 
+            // Tip at the bottom, touching the canvas, handle angled up and
+            // away -- pivoting about the tip so the dab reads as painting.
             VStack(spacing: 0) {
-                Rectangle().fill(paintColor).frame(width: pixelSize * 0.7, height: pixelSize * 0.8)
                 Rectangle().fill(Self.hammerHandleColor).frame(width: pixelSize * 0.45, height: pixelSize * 2.2)
+                Rectangle().fill(paintColor).frame(width: pixelSize * 0.7, height: pixelSize * 0.8)
             }
             .rotationEffect(.degrees(toggle ? 25 : 40), anchor: .bottom)
-            .offset(x: pixelSize * 0.6, y: -size * 0.45)
+            .offset(x: pixelSize * 0.4, y: -pixelSize * 1.5 - size * 0.05)
         }
         .offset(x: sideSign * spriteSize.width * 0.34, y: spriteSize.height * 0.12)
     }
@@ -461,7 +472,7 @@ struct CompanionView: View {
         let t = date.timeIntervalSinceReferenceDate
         let h = spriteSize.height
         let rx = spriteSize.width * 0.5
-        let ry = h * 0.12
+        let ry = h * 0.2
         let centerY = -(h * 0.5 + h * 0.3 + ry)
 
         return ZStack {
